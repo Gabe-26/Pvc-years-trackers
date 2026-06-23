@@ -1193,6 +1193,7 @@ const state = {
   issueYears: {},         // { 2025: { items: [...] } }
   excludedMaterialCodes: [],
   materialLabels: {},     // { itemCode: 'category' }
+  matRenamedCats: {},     // { 'prodLine': 'Display Name' }
   matActiveCats: [],      // [] = all; selected mat categories filter
   allowedMaterialCodes: [], // [] = import all; otherwise restrict to these codes
   itemSearchMode: 'sales', // 'sales' | 'materials'
@@ -1221,6 +1222,8 @@ function loadState() {
     if (exclMat) state.excludedMaterialCodes = JSON.parse(exclMat);
     const matLabels = localStorage.getItem('aii_pvc_material_labels');
     if (matLabels) state.materialLabels = JSON.parse(matLabels);
+    const matRenamed = localStorage.getItem('aii_pvc_mat_renamed_cats');
+    if (matRenamed) state.matRenamedCats = JSON.parse(matRenamed);
     const allowedMat = localStorage.getItem('aii_pvc_allowed_material_codes');
     if (allowedMat) state.allowedMaterialCodes = JSON.parse(allowedMat);
   } catch(e) {}
@@ -1259,6 +1262,9 @@ function saveExcludedMaterialCodes() {
 }
 function saveMaterialLabels() {
   localStorage.setItem('aii_pvc_material_labels', JSON.stringify(state.materialLabels));
+}
+function saveMatRenamedCats() {
+  localStorage.setItem('aii_pvc_mat_renamed_cats', JSON.stringify(state.matRenamedCats));
 }
 function saveAllowedMaterialCodes() {
   localStorage.setItem('aii_pvc_allowed_material_codes', JSON.stringify(state.allowedMaterialCodes));
@@ -2371,14 +2377,57 @@ function isMaterialCodeAllowed(code) {
 const MAT_DEFAULT_CAT = 'PVC Material';
 const MAT_CAT_COLOR = '#7da87d'; // muted green — distinct from sales palette
 
+function getMaterialProdLine(itemCode) {
+  for (const y of Object.keys(state.issueYears)) {
+    const found = state.issueYears[y].items.find(i => i.itemCode === itemCode);
+    if (found && found.prodLine) return found.prodLine;
+  }
+  return '';
+}
+
 function getMaterialCat(itemCode) {
-  return state.materialLabels[itemCode] || MAT_DEFAULT_CAT;
+  if (state.materialLabels[itemCode]) return state.materialLabels[itemCode];
+  const pl = getMaterialProdLine(itemCode);
+  if (pl) return state.matRenamedCats[pl] || pl;
+  return MAT_DEFAULT_CAT;
 }
 
 function getAllMaterialCategories() {
-  const cats = new Set([MAT_DEFAULT_CAT]);
+  const cats = new Set();
+  Object.keys(state.issueYears).forEach(y => {
+    state.issueYears[y].items.forEach(item => {
+      const pl = item.prodLine;
+      if (pl) cats.add(state.matRenamedCats[pl] || pl);
+      else cats.add(MAT_DEFAULT_CAT);
+    });
+  });
   Object.values(state.materialLabels).forEach(c => cats.add(c));
-  return [...cats];
+  if (cats.size === 0) cats.add(MAT_DEFAULT_CAT);
+  return [...cats].sort();
+}
+
+function renameMatCategory(oldName, newName) {
+  if (!newName || !newName.trim() || newName.trim() === oldName) return;
+  newName = newName.trim();
+  // Update matRenamedCats for any prod line whose display name matches oldName
+  const allProdLines = new Set();
+  Object.keys(state.issueYears).forEach(y => {
+    state.issueYears[y].items.forEach(i => { if (i.prodLine) allProdLines.add(i.prodLine); });
+  });
+  allProdLines.forEach(pl => {
+    const display = state.matRenamedCats[pl] || pl;
+    if (display === oldName) state.matRenamedCats[pl] = newName;
+  });
+  // Also update any manual materialLabels pointing to the old name
+  Object.keys(state.materialLabels).forEach(code => {
+    if (state.materialLabels[code] === oldName) state.materialLabels[code] = newName;
+  });
+  saveMaterialLabels();
+  saveMatRenamedCats();
+  updateMatCatFilter();
+  updateMatManageLegend();
+  if (state.cmpMode === 'materials') runCompare();
+  renderCustomTab();
 }
 
 function getMaterialCatColor(cat) {
@@ -2588,6 +2637,7 @@ function updateMatManageLegend() {
         <div class="cat-dot" style="background:${color}"></div>
         <span class="cat-name">${cat}</span>
         <span class="cat-count">${items.length}</span>
+        <span class="cat-expand-btn" title="Rename category" style="margin-left:4px;font-size:11px;" onclick="event.stopPropagation();startRenameMatCategory('${cat}', this)">✎</span>
         <span style="color:var(--text3);font-size:10px;margin-left:2px;">${isExpanded?'▲':'▼'}</span>
       </div>${itemRows}
     </div>`;
@@ -2597,6 +2647,31 @@ function updateMatManageLegend() {
 function toggleMatCatExpand(cat) {
   _expandedMatCat = _expandedMatCat === cat ? null : cat;
   updateMatManageLegend();
+}
+
+function startRenameMatCategory(cat, btn) {
+  const catItem = btn.closest('.cat-item');
+  const nameSpan = catItem.querySelector('.cat-name');
+  const oldName = nameSpan.textContent;
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.value = oldName;
+  input.style.cssText = 'width:140px;font-size:11px;padding:2px 6px;background:var(--surface3);border:1px solid var(--accent);color:var(--text);border-radius:3px;font-family:IBM Plex Mono,monospace;';
+  input.onclick = e => e.stopPropagation();
+  nameSpan.replaceWith(input);
+  input.focus();
+  input.select();
+  const commit = () => {
+    const newName = input.value.trim();
+    if (newName && newName !== oldName) renameMatCategory(oldName, newName);
+    else updateMatManageLegend();
+  };
+  input.addEventListener('blur', commit);
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+    if (e.key === 'Escape') { input.value = oldName; input.blur(); }
+    e.stopPropagation();
+  });
 }
 
 function excludeMaterialFromLegend(code) {
