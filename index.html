@@ -1653,32 +1653,17 @@ function saveExcludedReceiptCodes() {
 // ═══════════════════════════════════════════════
 // CLASSIFICATION RULES
 // ═══════════════════════════════════════════════
-const PROD_LINE_CATS = {
-  '0100': 'Stock Sections',
-  '0101': 'KD Sales',
-  '0102': 'Stock Railing',
-  '0103': 'Custom Railing',
-  '0110': 'Stock Post',
-  '0120': 'Stock Gate',
-  '0130': 'Custom Sections',
-  '0140': 'Custom Post',
-  '0150': 'Custom Gate',
-  '0151': 'PVC Metal Frame',
-  '0200': 'Misc',
-  '0201': 'Misc',
-  '0240': 'Bends',
-  '0250': 'Arbors & Pergolas',
-  '0280': 'Post Rails',
-};
+// Items default to their raw Prod Line code as the category (e.g. "0100",
+// "0130"), matching how Receipts categories work — no friendly-name mapping,
+// no merging of prod lines. Rename any code via the Manage tab if you want
+// a display name instead.
+const SALES_DEFAULT_CAT = 'Uncategorized'; // fallback only for items with no prod line at all
 
 function classifyItem(item) {
   const pl = item.prodLine ? item.prodLine.toString().padStart(4,'0') : '';
   const code = item.itemCode || '';
   if (state.itemLabels[code]) return state.itemLabels[code];
-  const cat = PROD_LINE_CATS[pl];
-  if (cat === null) return null;
-  if (cat === undefined) return 'Other';
-  return cat;
+  return pl || SALES_DEFAULT_CAT;
 }
 
 // ═══════════════════════════════════════════════
@@ -2196,35 +2181,27 @@ function getActivePeriod(selId) {
 // ═══════════════════════════════════════════════
 // CATEGORIES
 // ═══════════════════════════════════════════════
-const BASE_CATEGORIES = ['Stock Sections','KD Sales','Stock Railing','Custom Railing','Stock Post','Stock Gate','Custom Sections','Custom Post','Custom Gate','PVC Metal Frame','Misc','Bends','Arbors & Pergolas','Post Rails','Other'];
-const CAT_COLORS = {
-  'Stock Sections':    'var(--cat-stocksec)',
-  'KD Sales':          'var(--cat-kd)',
-  'Stock Railing':     'var(--cat-stockrail)',
-  'Custom Railing':    'var(--cat-customrail)',
-  'Stock Post':        'var(--cat-stockpost)',
-  'Stock Gate':        'var(--cat-stockgate)',
-  'Custom Sections':   'var(--cat-customsec)',
-  'Custom Post':       'var(--cat-custompost)',
-  'Custom Gate':       'var(--cat-customgate)',
-  'PVC Metal Frame':   'var(--cat-metalframe)',
-  'Misc':              'var(--cat-other)',
-  'Bends':             'var(--cat-bends)',
-  'Arbors & Pergolas': 'var(--cat-arbor)',
-  'Post Rails':        'var(--cat-postrail)',
-  'Other':             'var(--cat-other)',
-};
-
 function getCatColor(cat) {
-  if (CAT_COLORS[cat]) return CAT_COLORS[cat];
-  // Try looking up by original name
-  const orig = getOriginalCatName(cat);
-  return CAT_COLORS[orig] || 'var(--cat-custom)';
+  const palette = ['#e09040','#5b9bd5','#9b7fd4','#7da87d','#4cb8b8','#e8c46a','#e05c5c','#d45b9b'];
+  const cats = getAssignableCategories();
+  const idx = cats.indexOf(cat);
+  return palette[(idx >= 0 ? idx : 0) % palette.length] || '#666';
 }
 
+// Categories with at least one loaded, non-excluded item — for display (legend, filters)
 function getAllCategories() {
-  const cats = new Set([...BASE_CATEGORIES, ...state.customLabels]);
-  return [...cats].map(c => state.renamedCats[c] || c);
+  const cats = new Set();
+  getAllUniqueItems().forEach(item => cats.add(getEffectiveCat(item.itemCode, item)));
+  return [...cats].sort();
+}
+
+// Categories for reassignment dropdowns — includes empty custom labels too,
+// so a brand-new category you just created is still selectable before you've
+// assigned anything to it.
+function getAssignableCategories() {
+  const cats = new Set(getAllCategories());
+  state.customLabels.forEach(c => cats.add(c));
+  return [...cats];
 }
 
 function getOriginalCatName(displayName) {
@@ -2247,8 +2224,6 @@ function renameCategory(oldName, newName) {
   // Update customLabels if it was a custom label
   const ci = state.customLabels.indexOf(oldName);
   if (ci !== -1) state.customLabels[ci] = newName;
-  // Update CAT_COLORS to carry the color forward
-  if (CAT_COLORS[oldName]) { CAT_COLORS[newName] = CAT_COLORS[oldName]; delete CAT_COLORS[oldName]; }
   // Update active filter if it was pointing to old name
   if (state.activeFilter.cat === oldName) state.activeFilter.cat = newName;
   // Update cmpActiveCats
@@ -2416,7 +2391,7 @@ function bulkExclude() {
 function bulkReassignPrompt(e) {
   e.stopPropagation();
   const dd = document.getElementById('catDropdown');
-  const cats = getAllCategories();
+  const cats = getAssignableCategories();
   dd.innerHTML = cats.map(c =>
     `<div class="cat-select-opt" onclick="bulkAssignCat('${c}')">
       <div class="cat-dot" style="background:${getCatColor(c)};"></div>${c}
@@ -2467,16 +2442,8 @@ function updateCmpCatFilter() {
   const el = document.getElementById('cmpCatFilter');
   if (!el) return;
   const cats = getAllCategories();
-  const palMap = {
-    '--cat-stocksec':   '#4cb8b8', '--cat-kd':         '#9b7fd4', '--cat-stockrail':  '#5b9bd5',
-    '--cat-customrail': '#3a7abf', '--cat-stockpost':  '#e8c46a', '--cat-stockgate':  '#7dd47d',
-    '--cat-customsec':  '#2da8a8', '--cat-custompost': '#c8a84b', '--cat-customgate': '#4caf7d',
-    '--cat-metalframe': '#e05c5c', '--cat-bends':      '#e0885c', '--cat-arbor':      '#f0a060',
-    '--cat-postrail':   '#d45b9b', '--cat-other':      '#666666',
-  };
   el.innerHTML = cats.map(cat => {
-    const cssVar = getCatColor(cat).replace('var(','').replace(')','');
-    const color = palMap[cssVar] || '#888';
+    const color = getCatColor(cat);
     const active = state.cmpActiveCats.includes(cat);
     return `<div class="period-btn ${active ? 'active' : ''}" data-cat="${cat}"
       style="${active ? `background:${color};border-color:${color};color:#000;` : `border-color:${color}44;color:${color};`}"
@@ -2732,7 +2699,7 @@ document.getElementById('filterProdLine').addEventListener('change', e => {
 // ═══════════════════════════════════════════════
 function showCatDropdown(code, item, x, y) {
   const dd = document.getElementById('catDropdown');
-  const cats = getAllCategories();
+  const cats = getAssignableCategories();
   const current = getEffectiveCat(code, item);
   dd.innerHTML = cats.map(c =>
     `<div class="cat-select-opt ${c===current?'active':''}" onclick="assignCat('${code}','${c}')">
@@ -4321,16 +4288,7 @@ function renderTrendsByCategory(years, items, period) {
   });
 
   const activeCats = cats.filter(c => data[c] && data[c].some(v => v > 0));
-  const colors = activeCats.map(c => getCatColor(c).replace('var(', '').replace(')', ''));
-
-  const palMap = {
-    '--cat-stocksec':   '#4cb8b8', '--cat-kd':         '#9b7fd4', '--cat-stockrail':  '#5b9bd5',
-    '--cat-customrail': '#3a7abf', '--cat-stockpost':  '#e8c46a', '--cat-stockgate':  '#7dd47d',
-    '--cat-customsec':  '#2da8a8', '--cat-custompost': '#c8a84b', '--cat-customgate': '#4caf7d',
-    '--cat-metalframe': '#e05c5c', '--cat-bends':      '#e0885c', '--cat-arbor':      '#f0a060',
-    '--cat-postrail':   '#d45b9b', '--cat-other':      '#666666',
-  };
-  const resolvedColors = activeCats.map(c => palMap[getCatColor(c).replace('var(','').replace(')','')]||'#888');
+  const resolvedColors = activeCats.map(c => getCatColor(c));
 
   const chartsHTML = activeCats.map(cat => `
     <div class="chart-card">
@@ -4377,8 +4335,8 @@ function renderTrendsByCategory(years, items, period) {
         datasets: [{
           label: cat,
           data: data[cat],
-          borderColor: palMap[getCatColor(cat).replace('var(','').replace(')','')]||'#888',
-          backgroundColor: (palMap[getCatColor(cat).replace('var(','').replace(')','')]||'#888') + '22',
+          borderColor: getCatColor(cat),
+          backgroundColor: getCatColor(cat) + '22',
           borderWidth: 2,
           pointRadius: 4,
           fill: true,
@@ -5834,17 +5792,9 @@ function renderCustomCatChips() {
   const el = document.getElementById('customCatChips');
   const hint = document.getElementById('customCatsHint');
   if (!el) return;
-  const palMap = {
-    '--cat-stocksec':   '#4cb8b8', '--cat-kd':         '#9b7fd4', '--cat-stockrail':  '#5b9bd5',
-    '--cat-customrail': '#3a7abf', '--cat-stockpost':  '#e8c46a', '--cat-stockgate':  '#7dd47d',
-    '--cat-customsec':  '#2da8a8', '--cat-custompost': '#c8a84b', '--cat-customgate': '#4caf7d',
-    '--cat-metalframe': '#e05c5c', '--cat-bends':      '#e0885c', '--cat-arbor':      '#f0a060',
-    '--cat-postrail':   '#d45b9b', '--cat-other':      '#666666',
-  };
   const cats = getAllCategories();
   el.innerHTML = cats.map(cat => {
-    const cssVar = getCatColor(cat).replace('var(','').replace(')','');
-    const color = palMap[cssVar] || '#888';
+    const color = getCatColor(cat);
     const active = customState.selectedCats.includes(cat);
     return `<div class="period-btn ${active?'active':''}" 
       style="${active?`background:${color};border-color:${color};color:#000;`:`border-color:${color}44;color:${color};`}"
@@ -6277,13 +6227,6 @@ function runCustomCompareCategories() {
   const periodLabel = getPeriodsLabel(periods);
   const metricLabel = getMetricLabel();
   const colors = ['#5b9bd5','#4cb8b8','#4caf7d','#9b7fd4','#e0885c','#c8a84b','#e05c5c'];
-  const palMap = {
-    '--cat-stocksec':   '#4cb8b8', '--cat-kd':         '#9b7fd4', '--cat-stockrail':  '#5b9bd5',
-    '--cat-customrail': '#3a7abf', '--cat-stockpost':  '#e8c46a', '--cat-stockgate':  '#7dd47d',
-    '--cat-customsec':  '#2da8a8', '--cat-custompost': '#c8a84b', '--cat-customgate': '#4caf7d',
-    '--cat-metalframe': '#e05c5c', '--cat-bends':      '#e0885c', '--cat-arbor':      '#f0a060',
-    '--cat-postrail':   '#d45b9b', '--cat-other':      '#666666',
-  };
 
   const rows = cats.map(cat => {
     const yearQtys = activeYears.map(y => {
@@ -6304,7 +6247,7 @@ function runCustomCompareCategories() {
   ).join('');
 
   const tableRows = rows.map(r => {
-    const color = palMap[getCatColor(r.cat).replace('var(','').replace(')','')]||'#888';
+    const color = getCatColor(r.cat);
     const cells = r.yearQtys.map((qty, yi) => {
       const base = `<td class="td-num ${qty===0?'zero':''}">${fmtMetric(qty)}</td>`;
       if (yi < activeYears.length - 1) {
@@ -6642,10 +6585,6 @@ document.addEventListener('keydown', e => {
 });
 
 loadState();
-// Reapply any saved category renames to CAT_COLORS so colors survive a refresh
-Object.entries(state.renamedCats).forEach(([orig, renamed]) => {
-  if (CAT_COLORS[orig]) { CAT_COLORS[renamed] = CAT_COLORS[orig]; delete CAT_COLORS[orig]; }
-});
 
 // Sales/Issue/Receipt year data lives in IndexedDB now — everything that
 // reads it must wait for this to resolve before first render.
