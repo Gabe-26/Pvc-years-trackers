@@ -636,7 +636,9 @@
     #printArea {
       position: absolute; top: 0; left: 0; width: 100%; height: auto;
       background: #fff; color: #000; z-index: 99999;
+      -webkit-print-color-adjust: exact; print-color-adjust: exact; color-adjust: exact;
     }
+    #printArea * { -webkit-print-color-adjust: exact; print-color-adjust: exact; color-adjust: exact; }
   }
   /* ── PRINT AREA ── */
   #printArea {
@@ -680,9 +682,9 @@
   .pdf-chart-title { font-size: 9px; text-transform: uppercase; letter-spacing: 0.08em; color: #888; font-family: 'IBM Plex Mono', monospace; margin-bottom: 6px; }
   .pdf-table { width: 100%; border-collapse: collapse; font-size: 9.5px; font-family: 'IBM Plex Mono', monospace; }
   .pdf-table thead th {
-    background: #1a1a1a; color: #5b9bd5; font-weight: 600;
+    background: #eef4fb; color: #2a4a6a; font-weight: 700;
     text-transform: uppercase; letter-spacing: 0.07em; font-size: 8.5px;
-    padding: 6px 8px; text-align: left; border: 1px solid #333;
+    padding: 6px 8px; text-align: left; border: 1px solid #cfd8e3; border-bottom: 2px solid #5b9bd5;
   }
   .pdf-table thead th.num { text-align: right; }
   .pdf-table tbody td { padding: 5px 8px; border: 1px solid #e0e0e0; vertical-align: middle; }
@@ -800,13 +802,14 @@
       <div class="toplevel-tab active" data-dtype="sales" onclick="setDataType('sales')">💰 SALES</div>
       <div class="toplevel-tab" data-dtype="receipts" onclick="setDataType('receipts')">📦 RECEIPTS</div>
       <div class="toplevel-tab" data-dtype="issues" onclick="setDataType('issues')">🔨 ISSUES</div>
+      <div class="toplevel-tab" data-dtype="streport" id="stReportToplevelTab" onclick="showSTReport()">📋 ST REPORT</div>
     </div>
 
     <!-- TABS -->
     <div class="tabs">
       <div class="tab active" data-tab="compare">COMPARE</div>
       <div class="tab" data-tab="trends">TRENDS</div>
-      <div class="tab" data-tab="projections" style="display:none;">PROJECTIONS</div>
+      <div class="tab" data-tab="projections">PROJECTIONS</div>
       <div class="tab" data-tab="items">ITEM DETAIL</div>
       <div class="tab" data-tab="custom">CUSTOM</div>
       <div class="tab" data-tab="margins">MARGINS</div>
@@ -995,31 +998,61 @@
          PROJECTIONS TAB
     ═══════════════════════════════════ -->
     <div class="panel" id="panel-projections">
-      <div class="toolbar">
-        <div class="toolbar-group">
-          <span class="toolbar-label">Base Year</span>
-          <select id="projBaseYear" style="width:90px;"></select>
+      <div class="toolbar" style="flex-wrap:wrap;gap:8px;">
+        <div style="display:flex;align-items:center;gap:10px;width:100%;flex-wrap:wrap;">
+          <div class="toolbar-group">
+            <span class="toolbar-label">Base Year</span>
+            <select id="projBaseYear" style="width:90px;"></select>
+          </div>
+          <div class="toolbar-group">
+            <span class="toolbar-label">Target Year</span>
+            <input type="number" id="projTargetYear" value="2026" style="width:80px;">
+          </div>
+          <div class="toolbar-group">
+            <span class="toolbar-label">Mode</span>
+            <div class="period-selector">
+              <div class="period-btn active" id="projModeItems" onclick="setProjMode('items')">ITEMS</div>
+              <div class="period-btn" id="projModeCats" onclick="setProjMode('categories')">CATEGORIES</div>
+            </div>
+          </div>
+          <div class="toolbar-group">
+            <span class="toolbar-label">View</span>
+            <div class="period-selector">
+              <div class="period-btn active" id="projGranPeriods" onclick="setProjGranularity('periods')">PERIODS</div>
+              <div class="period-btn" id="projGranQuarters" onclick="setProjGranularity('quarters')">QUARTERS</div>
+            </div>
+          </div>
+          <div class="toolbar-group">
+            <span class="toolbar-label">Default Target %</span>
+            <input type="number" id="projDefaultPct" value="5" style="width:60px;">
+            <span style="color:var(--text3);font-size:11px;">%</span>
+          </div>
+          <div class="flex-grow"></div>
+          <button class="btn-sm" onclick="applyDefaultPct()">APPLY TO ALL</button>
+          <button class="btn-sm accent" onclick="runProjections()">CALCULATE</button>
+          <button class="btn-sm" onclick="exportPDF('projections')" title="Export to PDF">⬇ PDF</button>
         </div>
-        <div class="toolbar-group">
-          <span class="toolbar-label">Target Year</span>
-          <input type="number" id="projTargetYear" value="2026" style="width:80px;">
+        <div id="projItemsRow" style="display:flex;align-items:center;gap:8px;width:100%;flex-wrap:wrap;padding-top:2px;border-top:1px solid var(--border);">
+          <span class="toolbar-label">Add Item</span>
+          <div style="position:relative;">
+            <input type="text" id="projSearch" placeholder="Type code or description..." style="width:260px;" autocomplete="off">
+            <div id="projSuggestions" style="display:none;position:absolute;top:100%;left:0;width:420px;background:var(--surface2);border:1px solid var(--border2);border-radius:4px;z-index:500;max-height:240px;overflow-y:auto;box-shadow:0 8px 24px rgba(0,0,0,0.5);margin-top:2px;"></div>
+          </div>
+          <div id="projItemChips" style="display:flex;flex-wrap:wrap;gap:4px;"></div>
+          <span id="projItemsHint" style="color:var(--text3);font-size:10px;font-family:'IBM Plex Mono',monospace;">none added</span>
         </div>
-        <div class="toolbar-group">
-          <span class="toolbar-label">Default Target %</span>
-          <input type="number" id="projDefaultPct" value="5" style="width:60px;">
-          <span style="color:var(--text3);font-size:11px;">%</span>
+        <div id="projCatsRow" style="display:none;align-items:center;gap:8px;width:100%;flex-wrap:wrap;padding-top:2px;border-top:1px solid var(--border);">
+          <span class="toolbar-label">Categories</span>
+          <div id="projCatChips" style="display:flex;flex-wrap:wrap;gap:4px;"></div>
+          <span id="projCatsHint" style="color:var(--text3);font-size:10px;font-family:'IBM Plex Mono',monospace;">none selected (all)</span>
         </div>
-        <div class="flex-grow"></div>
-        <button class="btn-sm" onclick="applyDefaultPct()">APPLY TO ALL</button>
-        <button class="btn-sm accent" onclick="runProjections()">CALCULATE</button>
-        <button class="btn-sm" onclick="exportPDF('projections')" title="Export to PDF">⬇ PDF</button>
       </div>
       <div class="panel-scroll">
         <div id="projectionsContent">
           <div class="empty-state">
             <div class="empty-icon">🎯</div>
             <div class="empty-title">Set your targets</div>
-            <div class="empty-sub">Select a base year, set per-period target percentages, and calculate projections for each item.</div>
+            <div class="empty-sub">Add specific items or pick categories above, select a base year, set per-period target percentages, and calculate.</div>
           </div>
         </div>
       </div>
@@ -1120,6 +1153,13 @@
               <div class="period-btn" id="customModeCats" onclick="setCustomMode('categories')">CATEGORIES</div>
             </div>
           </div>
+          <div class="toolbar-group" id="customCatBreakdownGroup" style="display:none;">
+            <span class="toolbar-label">Show</span>
+            <div class="period-selector" id="customCatBreakdownSel">
+              <div class="period-btn active" onclick="setCustomCatBreakdown(false)">TOTALS</div>
+              <div class="period-btn" onclick="setCustomCatBreakdown(true)">ITEMS</div>
+            </div>
+          </div>
           <div class="toolbar-group" id="customSearchGroup" style="position:relative;">
             <span class="toolbar-label">Add Item</span>
             <div style="position:relative;">
@@ -1192,6 +1232,7 @@
           <span id="customMatCatsHint" style="color:var(--text3);font-size:10px;font-family:'IBM Plex Mono',monospace;">none selected (all)</span>
         </div>
       </div>
+      <div class="stats-bar" id="customStats" style="display:none;"></div>
       <div class="panel-scroll">
         <div id="customContent">
           <div class="empty-state">
@@ -1211,6 +1252,13 @@
               <div class="period-selector">
                 <div class="period-btn active" id="rcptCustomModeItems" onclick="setReceiptCustomMode('items')">ITEMS</div>
                 <div class="period-btn" id="rcptCustomModeCats" onclick="setReceiptCustomMode('categories')">CATEGORIES</div>
+              </div>
+            </div>
+            <div class="toolbar-group" id="rcptCustomCatBreakdownGroup" style="display:none;">
+              <span class="toolbar-label">Show</span>
+              <div class="period-selector" id="rcptCustomCatBreakdownSel">
+                <div class="period-btn active" onclick="setReceiptCustomCatBreakdown(false)">TOTALS</div>
+                <div class="period-btn" onclick="setReceiptCustomCatBreakdown(true)">ITEMS</div>
               </div>
             </div>
             <div class="toolbar-group" id="rcptCustomSearchGroup" style="position:relative;">
@@ -1261,6 +1309,7 @@
             <span id="rcptCustomCatsHint" style="color:var(--text3);font-size:10px;font-family:'IBM Plex Mono',monospace;">none selected</span>
           </div>
         </div>
+        <div class="stats-bar" id="rcptCustomStats" style="display:none;"></div>
         <div class="panel-scroll">
           <div id="rcptCustomContent">
             <div class="empty-state">
@@ -1421,6 +1470,86 @@
           </div>
           </div>
 
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══════════════════════════════════
+         ST REPORT TAB (Inventory Stock Status Report — session-only, not saved;
+         Saved Views ARE persisted to localStorage, see aii_pvc_streport_views)
+    ═══════════════════════════════════ -->
+    <div class="panel" id="panel-streport">
+      <div style="display:flex;gap:8px;padding:10px 20px 0;">
+        <div class="period-selector" id="stReportModeSel">
+          <div class="period-btn active" onclick="setSTReportMode('table')">📊 TABLE</div>
+          <div class="period-btn" onclick="setSTReportMode('manage')">⚙️ MANAGE VIEWS</div>
+        </div>
+      </div>
+
+      <div id="stReportTableView" style="display:flex;flex-direction:column;flex:1;min-height:0;overflow:hidden;">
+        <div class="toolbar" style="flex-wrap:wrap;gap:8px;">
+          <div class="upload-zone" id="stReportUploadZone" style="padding:5px 12px;display:flex;align-items:center;gap:8px;text-align:left;flex-shrink:0;" onclick="document.getElementById('stReportFileInput').click()">
+            <span class="upload-icon" style="margin:0;font-size:16px;">📂</span>
+            <div class="upload-text" id="stReportUploadText" style="line-height:1.3;">
+              <strong style="margin:0;">Upload CSV</strong>
+              drag or click — daily file, not saved
+            </div>
+          </div>
+          <input type="file" id="stReportFileInput" accept=".csv" style="display:none;">
+          <div class="toolbar-group">
+            <span class="toolbar-label">Saved View</span>
+            <select id="stReportViewFilter" style="width:150px;" onchange="filterSTReportView(this.value)">
+              <option value="">All Items</option>
+            </select>
+          </div>
+          <div class="toolbar-group">
+            <span class="toolbar-label">Prod Line</span>
+            <select id="stReportProdLineFilter" style="width:150px;" onchange="filterSTReportProdLine(this.value)">
+              <option value="">All Prod Lines</option>
+            </select>
+          </div>
+          <div class="toolbar-group" style="flex:1;min-width:180px;">
+            <input type="text" id="stReportSearchInput" placeholder="Search item code or description..." style="width:100%;max-width:260px;" oninput="filterSTReportSearch(this.value)">
+          </div>
+          <div class="flex-grow"></div>
+          <div class="toolbar-group">
+            <span class="toolbar-label">Warehouses</span>
+            <div class="period-selector" id="stReportWhseModeSel">
+              <div class="period-btn active" onclick="setSTReportWhseMode(false)">SPLIT</div>
+              <div class="period-btn" onclick="setSTReportWhseMode(true)">COMBINED</div>
+            </div>
+          </div>
+          <div class="toolbar-group">
+            <span class="toolbar-label">Metric</span>
+            <div class="period-selector" id="stReportMetricSel">
+              <div class="period-btn" onclick="setSTReportMetric('all')">ALL</div>
+              <div class="period-btn active" onclick="setSTReportMetric('onHand')">ON HAND</div>
+              <div class="period-btn" onclick="setSTReportMetric('onPO')">ON PO</div>
+              <div class="period-btn" onclick="setSTReportMetric('onSO')">ON SO</div>
+              <div class="period-btn" onclick="setSTReportMetric('onBO')">BACK ORD</div>
+              <div class="period-btn" onclick="setSTReportMetric('available')">AVAILABLE</div>
+              <div class="period-btn" onclick="setSTReportMetric('reorder')">REORDER</div>
+            </div>
+          </div>
+          <button class="btn-sm" onclick="exportPDF('stReport')" title="Export to PDF">⬇ PDF</button>
+        </div>
+
+        <div class="stats-bar" id="stReportStats" style="display:none;"></div>
+
+        <div class="panel-scroll" style="flex:1;min-height:0;">
+          <div id="stReportContent">
+            <div class="empty-state">
+              <div class="empty-icon">📋</div>
+              <div class="empty-title">No stock status data loaded</div>
+              <div class="empty-sub">Upload an Inventory Stock Status Report CSV above. This is a daily snapshot — it isn't saved between sessions, so re-upload each time.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div id="stReportManageView" style="display:none;flex-direction:column;flex:1;min-height:0;overflow:hidden;">
+        <div class="panel-scroll" style="flex:1;min-height:0;">
+          <div id="stReportManageContent" style="padding:20px;max-width:700px;"></div>
         </div>
       </div>
     </div>
@@ -1785,6 +1914,98 @@ function isSalesCSV(text) {
 }
 
 // ═══════════════════════════════════════════════
+// ST REPORT CSV PARSER (Inventory Stock Status Report)
+// ═══════════════════════════════════════════════
+// One row per item PER WAREHOUSE (no year dimension — this is a point-in-time
+// snapshot). Every row for an item repeats that item's grand-total block
+// (cols 52/57-62), identical across all its warehouse rows — same "dedupe,
+// don't sum" shape as Receipts single-year, except here the per-warehouse
+// rows themselves are the data we want, not just something to collapse.
+//   Item Code + Description combined: col 21 (split on first run of 2+ spaces)
+//   "Cycle:" label col 24, Avg Cost value col 26 (per-item, constant across
+//     that item's warehouse rows)
+//   Prod Line col 28 · Product Type col 29 · UOM col 30 · Warehouse col 31
+//   On Hand/On PO/On SO/On Back Order/Available/Reorder Point: cols 32-37 (per warehouse)
+//   "Item [code] Total:" grand total across warehouses: cols 57-62
+function isStockStatusCSV(text) {
+  return text.includes('Inventory Stock Status Report');
+}
+
+// This report's own column headers (e.g. "Primary Vendor\n\nNumber") are quoted
+// multi-line cells that get repeated as boilerplate on every data row — so a
+// naive split('\n') (fine for Sales/Receipts/Issues) shatters every row into
+// ~23 fragments here. Records must be split only on newlines OUTSIDE quotes.
+function splitStockStatusRecords(text) {
+  const records = [];
+  let current = '';
+  let inQuotes = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (ch === '"') {
+      if (inQuotes && text[i + 1] === '"') { current += '""'; i++; }
+      else { inQuotes = !inQuotes; current += ch; }
+    } else if ((ch === '\n' || ch === '\r') && !inQuotes) {
+      if (ch === '\r' && text[i + 1] === '\n') i++;
+      if (current.trim() !== '') records.push(current);
+      current = '';
+    } else {
+      current += ch;
+    }
+  }
+  if (current.trim() !== '') records.push(current);
+  return records;
+}
+
+function parseStockStatusCSV(text) {
+  const lines = splitStockStatusRecords(text);
+  const items = new Map(); // itemCode -> item object
+
+  const parseAmt = (raw) => {
+    raw = (raw || '').trim().replace(/,/g, '');
+    if (!raw) return 0;
+    const isNeg = raw.endsWith('-');
+    const num = parseFloat(raw.replace('-', '')) || 0;
+    return isNeg ? -num : num;
+  };
+
+  for (const line of lines) {
+    if (!line.trim()) continue;
+    const cols = parseCSVLine(line);
+    if (cols.length < 60) continue;
+
+    const codeDesc = (cols[21] || '').trim();
+    if (!codeDesc || codeDesc === 'Item Code/Description') continue;
+
+    const m = codeDesc.match(/^(\S+)\s{2,}(.*)$/);
+    const itemCode = m ? m[1] : codeDesc;
+    const description = m ? m[2].trim() : '';
+
+    const prodLine = (cols[28] || '').trim();
+    const uom = (cols[30] || '').trim();
+    const whse = (cols[31] || '').trim();
+    const avgCost = parseAmt(cols[26]);
+
+    if (!items.has(itemCode)) {
+      items.set(itemCode, {
+        itemCode, description, prodLine, uom, avgCost,
+        warehouses: {},
+        total: {
+          onHand: parseAmt(cols[57]), onPO: parseAmt(cols[58]), onSO: parseAmt(cols[59]),
+          onBO: parseAmt(cols[60]), available: parseAmt(cols[61]), reorder: parseAmt(cols[62])
+        }
+      });
+    }
+    if (whse) {
+      items.get(itemCode).warehouses[whse] = {
+        onHand: parseAmt(cols[32]), onPO: parseAmt(cols[33]), onSO: parseAmt(cols[34]),
+        onBO: parseAmt(cols[35]), available: parseAmt(cols[36]), reorder: parseAmt(cols[37])
+      };
+    }
+  }
+  return Array.from(items.values());
+}
+
+// ═══════════════════════════════════════════════
 // RECEIPTS CSV PARSER (Inventory Receipts History Report)
 // ═══════════════════════════════════════════════
 // Two export variants exist:
@@ -2007,6 +2228,469 @@ const uploadZone = document.getElementById('uploadZone');
 uploadZone.addEventListener('dragover', e => { e.preventDefault(); uploadZone.classList.add('drag-over'); });
 uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('drag-over'));
 uploadZone.addEventListener('drop', e => { e.preventDefault(); uploadZone.classList.remove('drag-over'); handleFiles(e.dataTransfer.files); });
+
+// ═══════════════════════════════════════════════
+// ST REPORT — state, view, filter/sort, upload
+// (session-only: not persisted to IndexedDB/localStorage; fully isolated from
+// state.dataType, so no dtype branch needed in shared handlers)
+// ═══════════════════════════════════════════════
+let stReportItems = null;        // array of parsed items, or null if nothing loaded yet
+let stReportFilename = '';
+let stReportMetric = 'onHand';   // onHand | onPO | onSO | onBO | available | reorder | all
+let stReportCombineWarehouses = false;  // true = hide per-warehouse columns, show Total(s) only
+let stReportProdLineFilterVal = '';
+let stReportSearchVal = '';
+let stReportSort = { col: 'itemCode', dir: 'asc' };
+const ST_METRIC_LABELS = { onHand: 'On Hand', onPO: 'On PO', onSO: 'On SO', onBO: 'Back Order', available: 'Available', reorder: 'Reorder Pt', all: 'All Metrics' };
+const ST_ALL_METRICS = ['onHand', 'onPO', 'onSO', 'onBO', 'available', 'reorder'];
+const ST_METRIC_ABBREV = { onHand: 'Hand', onPO: 'PO', onSO: 'SO', onBO: 'B/O', available: 'Avail', reorder: 'Reord' };
+
+// Saved Views: unlike the stock status data itself, these ARE persisted —
+// they're just named lists of item codes a person wants to jump back to
+// repeatably, independent of which day's file is currently loaded.
+let stReportMode = 'table';      // 'table' | 'manage'
+let stReportViews = {};          // { viewName: [itemCode, ...] }
+let stReportViewFilterVal = '';  // selected saved view for the table filter, or '' for all
+let stReportEditingView = null;  // view name currently open in the Manage editor, or null
+
+function loadSTReportViews() {
+  try {
+    const raw = localStorage.getItem('aii_pvc_streport_views');
+    if (raw) stReportViews = JSON.parse(raw);
+  } catch (e) {}
+}
+function saveSTReportViews() {
+  try { localStorage.setItem('aii_pvc_streport_views', JSON.stringify(stReportViews)); } catch (e) {}
+}
+
+function setSTReportMode(mode) {
+  stReportMode = mode;
+  document.querySelectorAll('#stReportModeSel .period-btn').forEach(b => b.classList.remove('active'));
+  event.target.classList.add('active');
+  document.getElementById('stReportTableView').style.display = mode === 'table' ? 'flex' : 'none';
+  document.getElementById('stReportManageView').style.display = mode === 'manage' ? 'flex' : 'none';
+  if (mode === 'manage') renderSTReportManage();
+}
+
+function setSTReportWhseMode(combine) {
+  stReportCombineWarehouses = combine;
+  document.querySelectorAll('#stReportWhseModeSel .period-btn').forEach(b => b.classList.remove('active'));
+  event.target.classList.add('active');
+  renderSTReportTable();
+}
+
+function showSTReport() {
+  document.querySelectorAll('.toplevel-tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('stReportToplevelTab').classList.add('active');
+  const curPanel = document.querySelector('.panel.active');
+  if (curPanel) curPanel.classList.remove('active');
+  document.querySelector('.tabs').style.display = 'none';
+  document.getElementById('panel-streport').classList.add('active');
+}
+
+function handleSTReportFiles(files) {
+  const file = files[0];
+  if (!file || !file.name.endsWith('.csv')) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    const text = e.target.result;
+    if (!isStockStatusCSV(text)) {
+      alert(`Unrecognized CSV format in: ${file.name}\nExpected an Inventory Stock Status Report.`);
+      return;
+    }
+    const items = parseStockStatusCSV(text);
+    if (!items.length) {
+      alert(`No stock status data found in: ${file.name}`);
+      return;
+    }
+    stReportItems = items;
+    stReportFilename = file.name;
+    stReportProdLineFilterVal = '';
+    stReportSearchVal = '';
+    stReportSort = { col: 'itemCode', dir: 'asc' };
+    const searchInput = document.getElementById('stReportSearchInput');
+    if (searchInput) searchInput.value = '';
+    renderSTReport();
+  };
+  reader.readAsText(file);
+}
+document.getElementById('stReportFileInput').addEventListener('change', e => handleSTReportFiles(e.target.files));
+const stReportUploadZoneEl = document.getElementById('stReportUploadZone');
+stReportUploadZoneEl.addEventListener('dragover', e => { e.preventDefault(); e.stopPropagation(); stReportUploadZoneEl.classList.add('drag-over'); });
+stReportUploadZoneEl.addEventListener('dragleave', () => stReportUploadZoneEl.classList.remove('drag-over'));
+stReportUploadZoneEl.addEventListener('drop', e => {
+  e.preventDefault(); e.stopPropagation();
+  stReportUploadZoneEl.classList.remove('drag-over');
+  handleSTReportFiles(e.dataTransfer.files);
+});
+
+function getSTReportWarehouses() {
+  if (!stReportItems) return [];
+  const set = new Set();
+  stReportItems.forEach(it => Object.keys(it.warehouses).forEach(w => set.add(w)));
+  return Array.from(set).sort();
+}
+
+function renderSTReport() {
+  const uploadTextEl = document.getElementById('stReportUploadText');
+  if (stReportItems) {
+    uploadTextEl.innerHTML = `<strong style="margin:0;">${stReportFilename}</strong>${stReportItems.length.toLocaleString()} items — drop a new file to replace`;
+  } else {
+    uploadTextEl.innerHTML = `<strong style="margin:0;">Upload CSV</strong>drag or click — daily file, not saved`;
+  }
+
+  const sel = document.getElementById('stReportProdLineFilter');
+  const curVal = stReportProdLineFilterVal;
+  if (stReportItems) {
+    const counts = new Map();
+    stReportItems.forEach(it => {
+      const pl = it.prodLine || '(none)';
+      counts.set(pl, (counts.get(pl) || 0) + 1);
+    });
+    const sortedPL = Array.from(counts.keys()).sort();
+    sel.innerHTML = `<option value="">All Prod Lines (${stReportItems.length})</option>` +
+      sortedPL.map(pl => `<option value="${pl}" ${pl === curVal ? 'selected' : ''}>${pl} (${counts.get(pl)})</option>`).join('');
+  }
+
+  updateSTReportViewFilterOptions();
+  renderSTReportTable();
+}
+
+// Saved Views persist independent of whether any CSV is currently loaded, so
+// this is called both at page init and whenever a view is added/renamed/deleted.
+function updateSTReportViewFilterOptions() {
+  const sel = document.getElementById('stReportViewFilter');
+  if (!sel) return;
+  const curVal = stReportViewFilterVal;
+  const names = Object.keys(stReportViews).sort();
+  sel.innerHTML = `<option value="">All Items</option>` +
+    names.map(n => `<option value="${n}" ${n === curVal ? 'selected' : ''}>${n} (${stReportViews[n].length})</option>`).join('');
+}
+
+function filterSTReportView(val) {
+  stReportViewFilterVal = val;
+  renderSTReportTable();
+}
+
+function filterSTReportProdLine(val) {
+  stReportProdLineFilterVal = val;
+  renderSTReportTable();
+}
+
+function filterSTReportSearch(val) {
+  stReportSearchVal = val.trim().toLowerCase();
+  renderSTReportTable();
+}
+
+function setSTReportMetric(m) {
+  stReportMetric = m;
+  document.querySelectorAll('#stReportMetricSel .period-btn').forEach(b => b.classList.remove('active'));
+  event.target.classList.add('active');
+  renderSTReportTable();
+}
+
+function sortSTReportTable(col) {
+  if (stReportSort.col === col) stReportSort.dir = stReportSort.dir === 'asc' ? 'desc' : 'asc';
+  else stReportSort = { col, dir: 'asc' };
+  renderSTReportTable();
+}
+
+function getSTReportSortVal(item, col) {
+  if (col === 'itemCode') return item.itemCode;
+  if (col === 'description') return item.description;
+  if (col === 'prodLine') return item.prodLine;
+  if (col === 'avgCost') return item.avgCost;
+  const parts = col.split(':');
+  if (parts[0] === 'total') return item.total[parts[1] || stReportMetric] || 0;
+  if (parts[0] === 'whse') {
+    const w = item.warehouses[parts[1]];
+    const metric = parts[2] || stReportMetric;
+    return w ? (w[metric] || 0) : 0;
+  }
+  return '';
+}
+
+function fmtSTQty(n) { return (!n) ? '—' : Math.round(n).toLocaleString(); }
+
+function getSTReportVisibleRows() {
+  let rows = stReportItems || [];
+  if (stReportViewFilterVal && stReportViews[stReportViewFilterVal]) {
+    const codeSet = new Set(stReportViews[stReportViewFilterVal]);
+    rows = rows.filter(it => codeSet.has(it.itemCode));
+  }
+  if (stReportProdLineFilterVal) {
+    rows = rows.filter(it => (it.prodLine || '(none)') === stReportProdLineFilterVal);
+  }
+  if (stReportSearchVal) {
+    rows = rows.filter(it =>
+      it.itemCode.toLowerCase().includes(stReportSearchVal) ||
+      (it.description || '').toLowerCase().includes(stReportSearchVal)
+    );
+  }
+  const { col, dir } = stReportSort;
+  rows = [...rows].sort((a, b) => {
+    const av = getSTReportSortVal(a, col), bv = getSTReportSortVal(b, col);
+    const cmp = (typeof av === 'string') ? av.localeCompare(bv) : (av - bv);
+    return dir === 'asc' ? cmp : -cmp;
+  });
+  return rows;
+}
+
+function renderSTReportTable() {
+  const content = document.getElementById('stReportContent');
+  const statsEl = document.getElementById('stReportStats');
+
+  if (!stReportItems) {
+    statsEl.style.display = 'none';
+    content.innerHTML = `<div class="empty-state">
+      <div class="empty-icon">📋</div>
+      <div class="empty-title">No stock status data loaded</div>
+      <div class="empty-sub">Upload an Inventory Stock Status Report CSV above. This is a daily snapshot — it isn't saved between sessions, so re-upload each time.</div>
+    </div>`;
+    return;
+  }
+
+  const warehouses = getSTReportWarehouses();
+  const isAll = stReportMetric === 'all';
+  const metricsToShow = isAll ? ST_ALL_METRICS : [stReportMetric];
+  const showWhseCols = !stReportCombineWarehouses;
+  const rows = getSTReportVisibleRows();
+
+  statsEl.style.display = 'flex';
+  const itemsCard = `<div class="stat-card"><div class="stat-label">Items Shown</div><div class="stat-value">${rows.length.toLocaleString()}</div><div class="stat-sub">of ${stReportItems.length}</div></div>`;
+  const metricCards = metricsToShow.map(m => {
+    const sum = rows.reduce((s, it) => s + (it.total[m] || 0), 0);
+    return `<div class="stat-card"><div class="stat-label">Total ${ST_METRIC_LABELS[m]}</div><div class="stat-value">${Math.round(sum).toLocaleString()}</div><div class="stat-sub">filtered</div></div>`;
+  }).join('');
+  statsEl.innerHTML = itemsCard + metricCards;
+
+  const thStyle = (c) => `onclick="sortSTReportTable('${c}')" class="${stReportSort.col === c ? (stReportSort.dir === 'asc' ? 'sorted-asc' : 'sorted-desc') : ''}"`;
+
+  let theadHTML;
+  if (!isAll) {
+    // Single metric — plain one-row header (unchanged from before ALL/combine existed)
+    theadHTML = `<tr>
+      <th ${thStyle('itemCode')}>Item Code</th>
+      <th ${thStyle('description')}>Description</th>
+      <th ${thStyle('prodLine')}>Prod Line</th>
+      <th ${thStyle('avgCost')} style="text-align:right">Avg Cost</th>
+      ${showWhseCols ? warehouses.map(w => `<th ${thStyle('whse:' + w)} style="text-align:right">Whse ${w}</th>`).join('') : ''}
+      <th ${thStyle('total')} style="text-align:right">Total</th>
+    </tr>`;
+  } else {
+    // ALL metrics — two-row grouped header (Whse 000 / Whse 001 / ... / Total, each spanning 6 metric sub-columns).
+    // Sticky positioning is disabled here (position:static) since the two rows would otherwise overlap when scrolling.
+    const whseGroupRow1 = showWhseCols ? warehouses.map(w =>
+      `<th colspan="${metricsToShow.length}" style="text-align:center;position:static;border-left:1px solid var(--border2);">Whse ${w}</th>`
+    ).join('') : '';
+    const totalGroupRow1 = `<th colspan="${metricsToShow.length}" style="text-align:center;position:static;border-left:1px solid var(--border2);">Total</th>`;
+    const row1 = `<tr>
+      <th rowspan="2" style="position:static;" ${thStyle('itemCode')}>Item Code</th>
+      <th rowspan="2" style="position:static;" ${thStyle('description')}>Description</th>
+      <th rowspan="2" style="position:static;" ${thStyle('prodLine')}>Prod Line</th>
+      <th rowspan="2" style="text-align:right;position:static;" ${thStyle('avgCost')}>Avg Cost</th>
+      ${whseGroupRow1}${totalGroupRow1}
+    </tr>`;
+    const whseGroupRow2 = showWhseCols ? warehouses.map(w =>
+      metricsToShow.map(m => `<th style="text-align:right;font-size:9px;position:static;" ${thStyle('whse:' + w + ':' + m)}>${ST_METRIC_ABBREV[m]}</th>`).join('')
+    ).join('') : '';
+    const totalGroupRow2 = metricsToShow.map(m => `<th style="text-align:right;font-size:9px;position:static;" ${thStyle('total:' + m)}>${ST_METRIC_ABBREV[m]}</th>`).join('');
+    theadHTML = row1 + `<tr>${whseGroupRow2}${totalGroupRow2}</tr>`;
+  }
+
+  const bodyRows = rows.map(it => {
+    const fixedCells = `
+      <td class="td-code">${it.itemCode}</td>
+      <td class="td-desc" title="${it.description}">${it.description || '—'}</td>
+      <td class="text-muted mono">${it.prodLine || '—'}</td>
+      <td class="td-num">${it.avgCost ? '$' + it.avgCost.toFixed(3) : '—'}</td>`;
+    const whseCells = showWhseCols ? warehouses.map(w =>
+      metricsToShow.map(m => {
+        const v = (it.warehouses[w] && it.warehouses[w][m]) || 0;
+        return `<td class="td-num ${v === 0 ? 'zero' : ''}">${fmtSTQty(v)}</td>`;
+      }).join('')
+    ).join('') : '';
+    const totalCells = metricsToShow.map(m => `<td class="td-num" style="font-weight:600;">${fmtSTQty(it.total[m] || 0)}</td>`).join('');
+    return `<tr>${fixedCells}${whseCells}${totalCells}</tr>`;
+  }).join('');
+
+  content.innerHTML = `
+    <div class="table-wrap">
+      <table>
+        <thead>${theadHTML}</thead>
+        <tbody>${bodyRows}</tbody>
+      </table>
+    </div>
+    ${rows.length === 0 ? '<div class="no-data">No items match current filters.</div>' : ''}
+  `;
+}
+
+// Builds the PDF version of the current table straight from the data model
+// (same rows/warehouses/metrics logic as renderSTReportTable) rather than
+// scraping the live DOM table — scraping flattens the two-row ALL-mode header
+// into one row, which no longer lines up with the per-row data cells.
+function buildSTReportPDFTable() {
+  if (!stReportItems) return '';
+  const warehouses = getSTReportWarehouses();
+  const isAll = stReportMetric === 'all';
+  const metricsToShow = isAll ? ST_ALL_METRICS : [stReportMetric];
+  const showWhseCols = !stReportCombineWarehouses;
+  const rows = getSTReportVisibleRows();
+
+  let theadHTML;
+  if (!isAll) {
+    const whseHeaders = showWhseCols ? warehouses.map(w => `<th class="num">Whse ${w}</th>`).join('') : '';
+    theadHTML = `<tr><th>Item Code</th><th>Description</th><th>Prod Line</th><th class="num">Avg Cost</th>${whseHeaders}<th class="num">Total</th></tr>`;
+  } else {
+    const whseGroupRow1 = showWhseCols ? warehouses.map(w => `<th colspan="${metricsToShow.length}" class="num">Whse ${w}</th>`).join('') : '';
+    const totalGroupRow1 = `<th colspan="${metricsToShow.length}" class="num">Total</th>`;
+    const row1 = `<tr><th rowspan="2">Item Code</th><th rowspan="2">Description</th><th rowspan="2">Prod Line</th><th rowspan="2" class="num">Avg Cost</th>${whseGroupRow1}${totalGroupRow1}</tr>`;
+    const whseGroupRow2 = showWhseCols ? warehouses.map(w => metricsToShow.map(m => `<th class="num">${ST_METRIC_ABBREV[m]}</th>`).join('')).join('') : '';
+    const totalGroupRow2 = metricsToShow.map(m => `<th class="num">${ST_METRIC_ABBREV[m]}</th>`).join('');
+    theadHTML = row1 + `<tr>${whseGroupRow2}${totalGroupRow2}</tr>`;
+  }
+
+  const bodyRows = rows.map(it => {
+    const fixedCells = `<td class="td-code">${it.itemCode}</td><td class="td-desc">${it.description || '—'}</td><td>${it.prodLine || '—'}</td><td class="num">${it.avgCost ? '$' + it.avgCost.toFixed(3) : '—'}</td>`;
+    const whseCells = showWhseCols ? warehouses.map(w =>
+      metricsToShow.map(m => {
+        const v = (it.warehouses[w] && it.warehouses[w][m]) || 0;
+        return `<td class="num ${v === 0 ? 'zero' : ''}">${fmtSTQty(v)}</td>`;
+      }).join('')
+    ).join('') : '';
+    const totalCells = metricsToShow.map(m => `<td class="num">${fmtSTQty(it.total[m] || 0)}</td>`).join('');
+    return `<tr>${fixedCells}${whseCells}${totalCells}</tr>`;
+  }).join('');
+
+  return `<div class="pdf-section-title">Items</div><table class="pdf-table"><thead>${theadHTML}</thead><tbody>${bodyRows}</tbody></table>`;
+}
+
+// ═══════════════════════════════════════════════
+// ST REPORT — Saved Views (Manage Views tab)
+// ═══════════════════════════════════════════════
+function createSTReportView() {
+  const input = document.getElementById('newSTReportViewInput');
+  const name = (input.value || '').trim();
+  if (!name) return;
+  if (stReportViews[name]) { alert(`A view named "${name}" already exists.`); return; }
+  stReportViews[name] = [];
+  saveSTReportViews();
+  input.value = '';
+  stReportEditingView = name;
+  updateSTReportViewFilterOptions();
+  renderSTReportManage();
+}
+
+function deleteSTReportView(name) {
+  if (!confirm(`Delete the view "${name}"? This can't be undone.`)) return;
+  delete stReportViews[name];
+  saveSTReportViews();
+  if (stReportViewFilterVal === name) stReportViewFilterVal = '';
+  if (stReportEditingView === name) stReportEditingView = null;
+  updateSTReportViewFilterOptions();
+  renderSTReportManage();
+  renderSTReportTable();
+}
+
+function editSTReportView(name) {
+  stReportEditingView = name;
+  renderSTReportManage();
+}
+
+function backSTReportViews() {
+  stReportEditingView = null;
+  renderSTReportManage();
+}
+
+function renameSTReportView(oldName) {
+  const input = prompt('Rename view:', oldName);
+  if (!input) return;
+  const newName = input.trim();
+  if (!newName || newName === oldName) return;
+  if (stReportViews[newName]) { alert(`A view named "${newName}" already exists.`); return; }
+  stReportViews[newName] = stReportViews[oldName];
+  delete stReportViews[oldName];
+  if (stReportEditingView === oldName) stReportEditingView = newName;
+  if (stReportViewFilterVal === oldName) stReportViewFilterVal = newName;
+  saveSTReportViews();
+  updateSTReportViewFilterOptions();
+  renderSTReportManage();
+  renderSTReportTable();
+}
+
+function addSTReportViewItems() {
+  if (!stReportEditingView) return;
+  const input = document.getElementById('stReportViewItemInput');
+  const raw = input.value || '';
+  const codes = raw.split(/[,\s]+/).map(c => c.trim().toUpperCase()).filter(Boolean);
+  if (!codes.length) return;
+  const list = stReportViews[stReportEditingView];
+  codes.forEach(c => { if (!list.includes(c)) list.push(c); });
+  saveSTReportViews();
+  input.value = '';
+  updateSTReportViewFilterOptions();
+  renderSTReportManage();
+}
+
+function removeSTReportViewItem(name, itemCode) {
+  stReportViews[name] = (stReportViews[name] || []).filter(c => c !== itemCode);
+  saveSTReportViews();
+  updateSTReportViewFilterOptions();
+  renderSTReportManage();
+}
+
+function renderSTReportManage() {
+  const content = document.getElementById('stReportManageContent');
+
+  if (!stReportEditingView) {
+    const names = Object.keys(stReportViews).sort();
+    content.innerHTML = `
+      <div style="margin-bottom:24px;">
+        <div style="font-family:'IBM Plex Mono',monospace;font-size:11px;text-transform:uppercase;letter-spacing:0.1em;color:var(--text3);margin-bottom:10px;">Create New View</div>
+        <div style="display:flex;gap:8px;">
+          <input type="text" id="newSTReportViewInput" placeholder="View name, e.g. Weekly Check List" style="width:260px;" onkeydown="if(event.key==='Enter')createSTReportView()">
+          <button class="btn-sm accent" onclick="createSTReportView()">+ Create View</button>
+        </div>
+      </div>
+      <div style="height:1px;background:var(--border);margin-bottom:24px;"></div>
+      <div style="font-family:'IBM Plex Mono',monospace;font-size:11px;text-transform:uppercase;letter-spacing:0.1em;color:var(--text3);margin-bottom:12px;">Saved Views</div>
+      ${names.length === 0 ? '<div class="no-data">No saved views yet — create one above, then add the item codes you check repeatedly.</div>' : names.map(name => `
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:var(--surface2);border:1px solid var(--border2);border-radius:4px;margin-bottom:8px;">
+          <div>
+            <div style="font-weight:600;color:var(--text1);">${name}</div>
+            <div style="font-size:11px;color:var(--text3);">${stReportViews[name].length} item${stReportViews[name].length === 1 ? '' : 's'}</div>
+          </div>
+          <div style="display:flex;gap:6px;">
+            <button class="btn-sm" onclick="editSTReportView('${name}')">Edit</button>
+            <button class="btn-sm" onclick="renameSTReportView('${name}')">Rename</button>
+            <button class="btn-sm" onclick="deleteSTReportView('${name}')">Delete</button>
+          </div>
+        </div>
+      `).join('')}
+    `;
+  } else {
+    const name = stReportEditingView;
+    const items = stReportViews[name] || [];
+    content.innerHTML = `
+      <button class="btn-sm" onclick="backSTReportViews()">← Back to Views</button>
+      <div style="font-size:16px;font-weight:600;margin:14px 0 4px;color:var(--text1);">${name}</div>
+      <div style="font-size:11px;color:var(--text3);margin-bottom:16px;">${items.length} item${items.length === 1 ? '' : 's'} saved</div>
+      <div style="display:flex;gap:8px;margin-bottom:14px;">
+        <input type="text" id="stReportViewItemInput" placeholder="Item code(s) — comma or space separated..." style="width:320px;text-transform:uppercase;" onkeydown="if(event.key==='Enter')addSTReportViewItems()">
+        <button class="btn-sm accent" onclick="addSTReportViewItems()">+ Add</button>
+      </div>
+      <div class="custom-labels-list">
+        ${items.length === 0 ? '<span class="text-muted" style="font-size:11px;">No items yet — add codes above.</span>' :
+          items.map(code => {
+            const known = !stReportItems || stReportItems.some(it => it.itemCode === code);
+            return `<div class="custom-label-tag" onclick="removeSTReportViewItem('${name}','${code}')" style="${known ? '' : 'opacity:0.5;'}" title="${known ? '' : 'Not found in the currently loaded file'}">
+              <span>${code}</span><span class="del-label">×</span>
+            </div>`;
+          }).join('')}
+      </div>
+    `;
+  }
+}
 
 // ═══════════════════════════════════════════════
 // UI UPDATE
@@ -2815,6 +3499,17 @@ function setDataTypeSectionVisibility(panelId, dataTypesAllowed) {
 }
 
 function setDataType(type) {
+  // Restore the normal sub-tab/panel view if we're coming back from ST Report mode
+  // (ST Report is a separate session-only view outside the sales/receipts/issues
+  // dtype system, so it never touches state.dataType — see showSTReport()).
+  const stPanel = document.getElementById('panel-streport');
+  if (stPanel && stPanel.classList.contains('active')) {
+    stPanel.classList.remove('active');
+    document.querySelector('.tabs').style.display = '';
+    const activeSubTab = document.querySelector('.tab.active') || document.querySelector('.tab[data-tab="compare"]');
+    document.getElementById('panel-' + activeSubTab.dataset.tab).classList.add('active');
+  }
+
   state.dataType = type;
   document.querySelectorAll('.toplevel-tab').forEach(t => t.classList.toggle('active', t.dataset.dtype === type));
 
@@ -2822,7 +3517,7 @@ function setDataType(type) {
   const projTab = document.querySelector('.tab[data-tab="projections"]');
   const trendsTab = document.querySelector('.tab[data-tab="trends"]');
   if (marginsTab) marginsTab.style.display = (type === 'sales') ? '' : 'none';
-  if (projTab) projTab.style.display = (type === 'sales') ? 'none' : '';
+  if (projTab) projTab.style.display = '';
   if (trendsTab) trendsTab.style.display = (type === 'sales') ? '' : 'none';
 
   // If the currently active sub-tab just got hidden, fall back to Compare
@@ -2841,7 +3536,7 @@ function setDataType(type) {
   updateItemsSectionsVisibility();
   updateCustomSectionsVisibility();
   updateManageSectionsVisibility();
-  setDataTypeSectionVisibility('panel-projections', []); // Issues/Receipts projections built in a follow-up stage
+  setDataTypeSectionVisibility('panel-projections', ['sales']); // Issues/Receipts projections still built in a follow-up stage
   updateBulkActionBar();
 
   updateYearList(getSortedYears());
@@ -3740,7 +4435,7 @@ function runMaterialsCompare() {
   const statsEl = document.getElementById('cmpStats');
   statsEl.style.display = 'flex';
   statsEl.innerHTML = `
-    <div class="stat-card"><div class="stat-label">Materials Compared</div><div class="stat-value">${rows.length}</div><div class="stat-sub">filtered</div></div>
+    <div class="stat-card"><div class="stat-label">Issues Compared</div><div class="stat-value">${rows.length}</div><div class="stat-sub">filtered</div></div>
     <div class="stat-card"><div class="stat-label">${baseYear} Total Issued</div><div class="stat-value">${totalBase.toLocaleString()}</div><div class="stat-sub">${periodLabel}</div></div>
     <div class="stat-card"><div class="stat-label">${vsYear} Total Issued</div><div class="stat-value">${totalVs.toLocaleString()}</div><div class="stat-sub">${periodLabel}</div></div>
     <div class="stat-card"><div class="stat-label">Change</div><div class="stat-value" style="color:${totalPct>=0?'var(--green)':'var(--red)'}">${fmtPct(totalPct)}</div><div class="stat-sub">${(totalVs-totalBase).toLocaleString()}</div></div>
@@ -4443,15 +5138,122 @@ function chartOpts(yLabel, stacked) {
 // ═══════════════════════════════════════════════
 let projChart = null;
 
+const projState = {
+  mode: 'items',        // 'items' | 'categories'
+  items: [],            // [{itemCode, description, prodLine}] — ITEMS mode selection
+  selectedCats: [],      // selected category names — CATEGORIES mode (empty = all categories)
+};
+
+let projViewGranularity = 'periods'; // 'periods' | 'quarters' — how targets/table are shown and edited
+let projExcludedPeriods = new Set(); // period numbers (1-12) excluded from PDF export — always tracked
+                                      // at the period level even when a whole quarter is excluded, so
+                                      // switching views afterward stays consistent.
+const PROJ_QUARTERS = [[1,2,3],[4,5,6],[7,8,9],[10,11,12]]; // periods per quarter, 1-indexed
+
+// Columns to render: one per period, or one per quarter (aggregating 3 periods each).
+function getProjTableColumns() {
+  if (projViewGranularity === 'quarters') {
+    return [1,2,3,4].map(q => ({ label: 'Q'+q, unit: 'quarter', num: q, periods: PROJ_QUARTERS[q-1] }));
+  }
+  return Array.from({length:12}, (_,i) => ({ label: 'P'+(i+1), unit: 'period', num: i+1, periods: [i+1] }));
+}
+
+function setProjGranularity(g) {
+  projViewGranularity = g;
+  document.getElementById('projGranPeriods').classList.toggle('active', g === 'periods');
+  document.getElementById('projGranQuarters').classList.toggle('active', g === 'quarters');
+  runProjections();
+}
+
+// A period/quarter card or column is "excluded" once every period underlying it
+// is in projExcludedPeriods — clicking a quarter card excludes/restores all 3
+// of its periods together, so partial state never shows on the card itself.
+function toggleProjCardExclusion(el) {
+  const unit = el.dataset.projUnit;
+  const num = parseInt(el.dataset.projNum);
+  const periods = unit === 'quarter' ? PROJ_QUARTERS[num-1] : [num];
+  const allExcluded = periods.every(p => projExcludedPeriods.has(p));
+  if (allExcluded) periods.forEach(p => projExcludedPeriods.delete(p));
+  else periods.forEach(p => projExcludedPeriods.add(p));
+  el.classList.toggle('chart-pdf-excluded', !allExcluded);
+}
+
+// Resolves projState into an actual item list: in ITEMS mode this is exactly
+// what was added (empty selection = empty result, unlike Categories mode);
+// in CATEGORIES mode, empty selection defaults to all categories.
+function getProjItems() {
+  if (projState.mode === 'items') return projState.items;
+  const allItems = getAllUniqueItems();
+  const cats = projState.selectedCats.length ? projState.selectedCats : getAllCategories();
+  return allItems.filter(item => cats.includes(getEffectiveCat(item.itemCode, item)));
+}
+
+function setProjMode(mode) {
+  projState.mode = mode;
+  document.getElementById('projModeItems').classList.toggle('active', mode === 'items');
+  document.getElementById('projModeCats').classList.toggle('active', mode === 'categories');
+  document.getElementById('projItemsRow').style.display = (mode === 'items') ? 'flex' : 'none';
+  document.getElementById('projCatsRow').style.display  = (mode === 'categories') ? 'flex' : 'none';
+  if (mode === 'categories') renderProjCatChips();
+}
+
+function addProjItem(itemCode, description, prodLine) {
+  if (projState.items.find(i => i.itemCode === itemCode)) return;
+  projState.items.push({ itemCode, description, prodLine });
+  renderProjItemChips();
+}
+
+function removeProjItem(itemCode) {
+  projState.items = projState.items.filter(i => i.itemCode !== itemCode);
+  renderProjItemChips();
+}
+
+function renderProjItemChips() {
+  const el = document.getElementById('projItemChips');
+  const hint = document.getElementById('projItemsHint');
+  if (!el) return;
+  el.innerHTML = projState.items.map(i =>
+    `<div class="custom-label-tag" style="font-family:'IBM Plex Mono',monospace;">
+      <span style="color:var(--accent);font-weight:600;">${i.itemCode}</span>
+      ${i.description ? `<span style="color:var(--text3);font-size:10px;margin-left:2px;">${i.description.slice(0,30)}</span>` : ''}
+      <span class="del-label" onclick="removeProjItem('${i.itemCode}')">×</span>
+    </div>`
+  ).join('');
+  if (hint) hint.style.display = projState.items.length ? 'none' : '';
+}
+
+function toggleProjCat(cat) {
+  const idx = projState.selectedCats.indexOf(cat);
+  if (idx === -1) projState.selectedCats.push(cat);
+  else projState.selectedCats.splice(idx, 1);
+  renderProjCatChips();
+}
+
+function renderProjCatChips() {
+  const el = document.getElementById('projCatChips');
+  const hint = document.getElementById('projCatsHint');
+  if (!el) return;
+  const cats = getAllCategories();
+  el.innerHTML = cats.map(cat => {
+    const color = getCatColor(cat);
+    const active = projState.selectedCats.includes(cat);
+    return `<div class="period-btn ${active?'active':''}"
+      style="${active?`background:${color};border-color:${color};color:#000;`:`border-color:${color}44;color:${color};`}"
+      onclick="toggleProjCat('${cat}')">${cat}</div>`;
+  }).join('');
+  if (hint) hint.style.display = projState.selectedCats.length ? 'none' : '';
+}
+
 function applyDefaultPct() {
   const pct = parseFloat(document.getElementById('projDefaultPct').value) || 0;
   for (let p = 1; p <= 12; p++) state.projTargets[p] = pct;
   saveProjTargets();
-  // Update all inputs
-  for (let p = 1; p <= 12; p++) {
-    const el = document.getElementById(`projPct_${p}`);
+  // Update whichever inputs are actually on screen right now (id depends on
+  // the current Periods/Quarters view — see getProjTableColumns()).
+  getProjTableColumns().forEach(col => {
+    const el = document.getElementById(`projPct_${col.unit}_${col.num}`);
     if (el) el.value = pct;
-  }
+  });
   recalcProjections();
 }
 
@@ -4462,35 +5264,48 @@ function runProjections() {
     document.getElementById('projectionsContent').innerHTML = '<div class="empty-state"><div class="empty-icon">⚠️</div><div class="empty-title">Load base year first</div></div>';
     return;
   }
+  if (projState.mode === 'items' && !projState.items.length) {
+    document.getElementById('projectionsContent').innerHTML = '<div class="empty-state"><div class="empty-icon">🎯</div><div class="empty-title">No items added</div><div class="empty-sub">Search and add item codes above, or switch to Categories mode.</div></div>';
+    return;
+  }
 
   // Initialize targets if needed
   for (let p = 1; p <= 12; p++) {
     if (state.projTargets[p] === undefined) state.projTargets[p] = 0;
   }
 
-  const items = getFilteredItems();
+  const items = getProjItems();
   const baseItems = items.map(item => {
     const bi = getItemForYear(baseYear, item.itemCode);
     return { ...item, periods: bi ? bi.periods : [0,0,0,0,0,0,0,0,0,0,0,0] };
   });
 
-  // Period target inputs
+  const cols = getProjTableColumns();
+
+  // Target inputs — one card per period or per quarter depending on the View toggle.
+  // Editing a quarter's % sets all 3 of its periods to that value; the card shows
+  // the first period's value as a representative (they stay in sync unless you
+  // switch to Periods view and edit them individually again).
   const periodInputsHTML = `
     <div class="proj-summary-grid" id="projSummaryGrid">
-      ${Array.from({length:12},(_,i)=>{
-        const p = i+1;
-        const pct = state.projTargets[p]||0;
-        const baseTotal = baseItems.reduce((s,it)=>s+it.periods[i],0);
-        const projTotal = Math.round(baseTotal * (1 + pct/100));
-        return `<div class="proj-sum-card">
-          <div class="proj-sum-p">P${p}</div>
+      ${cols.map(col => {
+        const pct = state.projTargets[col.periods[0]] || 0;
+        const baseTotal = baseItems.reduce((s,it) => s + col.periods.reduce((ss,p) => ss + it.periods[p-1], 0), 0);
+        const projTotal = col.periods.reduce((s,p) => {
+          const ppct = state.projTargets[p] || 0;
+          return s + baseItems.reduce((ss,it) => ss + Math.round(it.periods[p-1] * (1 + ppct/100)), 0);
+        }, 0);
+        const excluded = col.periods.every(p => projExcludedPeriods.has(p));
+        const updateFn = col.unit === 'quarter' ? `updateProjQuarterTarget(${col.num},this.value)` : `updateProjTarget(${col.num},this.value)`;
+        return `<div class="proj-sum-card chart-toggleable${excluded?' chart-pdf-excluded':''}" data-proj-unit="${col.unit}" data-proj-num="${col.num}" title="Click to exclude from PDF" onclick="if(event.target.tagName!=='INPUT')toggleProjCardExclusion(this)">
+          <div class="proj-sum-p">${col.label}</div>
           <div class="proj-sum-base">${baseTotal.toLocaleString()}</div>
           <div style="display:flex;align-items:center;gap:4px;justify-content:center;margin:4px 0;">
-            <input type="number" id="projPct_${p}" value="${pct}" step="0.5" style="width:55px;text-align:center;font-size:11px;" oninput="updateProjTarget(${p},this.value)">
+            <input type="number" id="projPct_${col.unit}_${col.num}" value="${pct}" step="0.5" style="width:55px;text-align:center;font-size:11px;" oninput="${updateFn}">
             <span style="color:var(--text3);font-size:10px;">%</span>
           </div>
-          <div class="proj-sum-target" id="projSumTarget_${p}">${projTotal.toLocaleString()}</div>
-          <div class="proj-sum-pct" id="projSumPct_${p}" style="color:${pct>=0?'var(--green)':'var(--red)'}">${fmtPct(pct)}</div>
+          <div class="proj-sum-target" id="projSumTarget_${col.unit}_${col.num}">${projTotal.toLocaleString()}</div>
+          <div class="proj-sum-pct" id="projSumPct_${col.unit}_${col.num}" style="color:${pct>=0?'var(--green)':'var(--red)'}">${fmtPct(pct)}</div>
         </div>`;
       }).join('')}
     </div>
@@ -4506,7 +5321,7 @@ function runProjections() {
             <th>Description</th>
             <th>Category</th>
             <th style="text-align:right">Base Total (${baseYear})</th>
-            ${Array.from({length:12},(_,i)=>`<th style="text-align:right">P${i+1} Base</th><th style="text-align:right">P${i+1} Proj</th>`).join('')}
+            ${cols.map(col => `<th style="text-align:right">${col.label} Base</th><th style="text-align:right">${col.label} Proj</th>`).join('')}
             <th style="text-align:right">Proj Total</th>
           </tr>
         </thead>
@@ -4521,28 +5336,31 @@ function runProjections() {
 }
 
 function renderProjRows(baseItems) {
-  return (baseItems || getFilteredItems().map(item => {
+  const cols = getProjTableColumns();
+  return (baseItems || getProjItems().map(item => {
     const bi = getItemForYear(parseInt(document.getElementById('projBaseYear').value), item.itemCode);
     return { ...item, periods: bi ? bi.periods : [0,0,0,0,0,0,0,0,0,0,0,0] };
   })).map(item => {
     const cat = getEffectiveCat(item.itemCode, item);
     const baseTotal = item.periods.reduce((s,v)=>s+v, 0);
-    const projPeriods = item.periods.map((v, i) => {
-      const pct = state.projTargets[i+1] || 0;
-      return Math.round(v * (1 + pct/100));
+    const colVals = cols.map(col => {
+      const base = col.periods.reduce((s,p) => s + item.periods[p-1], 0);
+      const proj = col.periods.reduce((s,p) => {
+        const pct = state.projTargets[p] || 0;
+        return s + Math.round(item.periods[p-1] * (1 + pct/100));
+      }, 0);
+      return { base, proj };
     });
-    const projTotal = projPeriods.reduce((s,v)=>s+v, 0);
+    const projTotal = colVals.reduce((s,c)=>s+c.proj, 0);
     if (baseTotal === 0 && projTotal === 0) return '';
     return `<tr>
       <td class="td-code">${item.itemCode}</td>
       <td class="td-desc" title="${item.description}">${item.description||'—'}</td>
       <td>${catBadge(cat||'Other', item.itemCode, item)}</td>
       <td class="td-num">${fmt(baseTotal)}</td>
-      ${item.periods.map((v,i)=>{
-        const proj = projPeriods[i];
-        const pct = state.projTargets[i+1]||0;
-        return `<td class="td-num ${v===0?'zero':''}">${fmt(v)}</td><td class="td-num" style="color:${pct>=0?'var(--green)':'var(--red)'}">${fmt(proj)}</td>`;
-      }).join('')}
+      ${colVals.map(c=>
+        `<td class="td-num ${c.base===0?'zero':''}">${fmt(c.base)}</td><td class="td-num" style="color:${c.proj>=c.base?'var(--green)':'var(--red)'}">${fmt(c.proj)}</td>`
+      ).join('')}
       <td class="td-num" style="color:var(--accent);font-weight:600;">${fmt(projTotal)}</td>
     </tr>`;
   }).join('');
@@ -4554,25 +5372,35 @@ function updateProjTarget(period, val) {
   recalcProjections();
 }
 
+function updateProjQuarterTarget(quarter, val) {
+  const pct = parseFloat(val) || 0;
+  PROJ_QUARTERS[quarter-1].forEach(p => { state.projTargets[p] = pct; });
+  saveProjTargets();
+  recalcProjections();
+}
+
 function recalcProjections() {
   const baseYear = parseInt(document.getElementById('projBaseYear').value);
   if (!state.years[baseYear]) return;
-  const items = getFilteredItems();
+  const items = getProjItems();
   const baseItems = items.map(item => {
     const bi = getItemForYear(baseYear, item.itemCode);
     return { ...item, periods: bi ? bi.periods : [0,0,0,0,0,0,0,0,0,0,0,0] };
   });
 
   // Update summary cards
-  for (let p = 1; p <= 12; p++) {
-    const pct = state.projTargets[p]||0;
-    const baseTotal = baseItems.reduce((s,it)=>s+it.periods[p-1],0);
-    const projTotal = Math.round(baseTotal * (1+pct/100));
-    const t = document.getElementById(`projSumTarget_${p}`);
-    const pp = document.getElementById(`projSumPct_${p}`);
+  const cols = getProjTableColumns();
+  cols.forEach(col => {
+    const pct = state.projTargets[col.periods[0]] || 0;
+    const projTotal = col.periods.reduce((s,p) => {
+      const ppct = state.projTargets[p] || 0;
+      return s + baseItems.reduce((ss,it) => ss + Math.round(it.periods[p-1] * (1 + ppct/100)), 0);
+    }, 0);
+    const t = document.getElementById(`projSumTarget_${col.unit}_${col.num}`);
+    const pp = document.getElementById(`projSumPct_${col.unit}_${col.num}`);
     if (t) t.textContent = projTotal.toLocaleString();
     if (pp) { pp.textContent = fmtPct(pct); pp.style.color = pct>=0?'var(--green)':'var(--red)'; }
-  }
+  });
 
   // Update table
   const tbody = document.getElementById('projTbody');
@@ -5704,6 +6532,9 @@ const customState = {
   matYears: [],
   matItems: [],
   selectedMatCats: [],
+  catItemBreakdown: false, // categories mode only: false = category totals, true = one row per item
+  itemSortCol: null,   // item-breakdown table sort column, or null = default (category, then item code)
+  itemSortDir: 'desc',
 };
 
 function updateCustomYearSel() {
@@ -5784,8 +6615,22 @@ function setCustomMode(mode) {
   document.getElementById('customCatsRow').style.display      = (!isMat && mode === 'categories') ? 'flex' : 'none';
   document.getElementById('customMatItemsRow').style.display  = (isMat  && mode === 'items')      ? 'flex' : 'none';
   document.getElementById('customMatCatsRow').style.display   = (isMat  && mode === 'categories') ? 'flex' : 'none';
+  document.getElementById('customCatBreakdownGroup').style.display = (!isMat && mode === 'categories') ? '' : 'none';
   if (!isMat && mode === 'categories') renderCustomCatChips();
   if (isMat  && mode === 'categories') renderCustomMatCatChips();
+}
+
+function setCustomCatBreakdown(showItems) {
+  customState.catItemBreakdown = showItems;
+  document.querySelectorAll('#customCatBreakdownSel .period-btn').forEach(b => b.classList.remove('active'));
+  event.target.classList.add('active');
+  runCustomCompareCategories();
+}
+
+function sortCustomItemBreakdown(col) {
+  if (customState.itemSortCol === col) customState.itemSortDir = customState.itemSortDir === 'asc' ? 'desc' : 'asc';
+  else { customState.itemSortCol = col; customState.itemSortDir = 'desc'; }
+  runCustomCompareCategories();
 }
 
 function renderCustomCatChips() {
@@ -5891,6 +6736,7 @@ function setCustomDataMode(dataMode) {
   document.getElementById('customCatsRow').style.display      = (!isMat && mode === 'categories') ? 'flex' : 'none';
   document.getElementById('customMatItemsRow').style.display  = (isMat  && mode === 'items')      ? 'flex' : 'none';
   document.getElementById('customMatCatsRow').style.display   = (isMat  && mode === 'categories') ? 'flex' : 'none';
+  document.getElementById('customCatBreakdownGroup').style.display = (!isMat && mode === 'categories') ? '' : 'none';
   document.getElementById('customSearchGroup').style.display  = (!isMat && mode === 'items')      ? '' : 'none';
   // Metric buttons — hide $/COGS/GP for materials
   const metricBtns = document.querySelectorAll('#customMetricSel .period-btn');
@@ -6136,8 +6982,9 @@ function runCustomCompareMaterials() {
 }
 
 function runCustomCompare() {
-  if (customState.dataMode === 'materials') { runCustomCompareMaterials(); return; }
+  if (customState.dataMode === 'materials') { document.getElementById('customStats').style.display = 'none'; runCustomCompareMaterials(); return; }
   if (customState.mode === 'categories') { runCustomCompareCategories(); return; }
+  document.getElementById('customStats').style.display = 'none';
 
   if (!customState.items.length) {
     document.getElementById('customContent').innerHTML = '<div class="empty-state"><div class="empty-icon">🎯</div><div class="empty-title">No items added</div><div class="empty-sub">Search and add item codes above.</div></div>';
@@ -6246,6 +7093,105 @@ function runCustomCompareCategories() {
     (yi < activeYears.length - 1 ? `<th style="text-align:right;font-size:9px;">vs ${activeYears[yi+1]}</th>` : '')
   ).join('');
 
+  // ── Item breakdown: one row per item within the selected categories ──
+  if (customState.catItemBreakdown) {
+    const itemRows = allItems
+      .filter(item => cats.includes(getEffectiveCat(item.itemCode, item)))
+      .map(item => {
+        const cat = getEffectiveCat(item.itemCode, item);
+        const yearQtys = activeYears.map(y => {
+          const yi = getItemForYear(y, item.itemCode);
+          return yi ? getPeriodsMetric(yi, periods) : 0;
+        });
+        // Precompute each consecutive-pair's % change and absolute diff once, so both
+        // rendering and sorting read the same values instead of recalculating.
+        const pcts = [], diffs = [];
+        for (let yi = 0; yi < yearQtys.length - 1; yi++) {
+          pcts.push(calcPct(yearQtys[yi], yearQtys[yi+1]));
+          diffs.push(yearQtys[yi+1] - yearQtys[yi]);
+        }
+        return { itemCode: item.itemCode, description: item.description || '—', prodLine: item.prodLine || '', cat, yearQtys, pcts, diffs };
+      })
+      .filter(r => r.yearQtys.some(v => v !== 0));
+
+    if (customState.itemSortCol) {
+      const col = customState.itemSortCol, dir = customState.itemSortDir;
+      itemRows.sort((a, b) => {
+        let va, vb;
+        if (col === 'itemCode' || col === 'description' || col === 'prodLine' || col === 'cat') { va = a[col]; vb = b[col]; }
+        else if (col[0] === 'y') { const idx = +col.slice(1); va = a.yearQtys[idx]; vb = b.yearQtys[idx]; }
+        else if (col.startsWith('pct')) { const idx = +col.slice(3); va = a.pcts[idx]; vb = b.pcts[idx]; }
+        else if (col.startsWith('diff')) { const idx = +col.slice(4); va = a.diffs[idx]; vb = b.diffs[idx]; }
+        if (typeof va === 'string') { va = va.toLowerCase(); vb = vb.toLowerCase(); return dir === 'asc' ? (va > vb ? 1 : -1) : (va < vb ? 1 : -1); }
+        return dir === 'asc' ? va - vb : vb - va;
+      });
+    } else {
+      itemRows.sort((a, b) => a.cat.localeCompare(b.cat) || a.itemCode.localeCompare(b.itemCode));
+    }
+
+    // Stats bar — mirrors the regular Compare tab's stats bar, generalized to N years
+    const yearTotals = activeYears.map((y, yi) => itemRows.reduce((s, r) => s + r.yearQtys[yi], 0));
+    const firstTotal = yearTotals[0] || 0;
+    const lastTotal = yearTotals[yearTotals.length - 1] || 0;
+    const overallPct = calcPct(firstTotal, lastTotal);
+    const statsEl = document.getElementById('customStats');
+    statsEl.style.display = 'flex';
+    statsEl.innerHTML = `
+      <div class="stat-card"><div class="stat-label">Items Compared</div><div class="stat-value">${itemRows.length}</div><div class="stat-sub">filtered</div></div>
+      ${activeYears.map((y, yi) => `<div class="stat-card"><div class="stat-label">${y} Total</div><div class="stat-value">${fmtMetric(yearTotals[yi])}</div><div class="stat-sub">${periodLabel}</div></div>`).join('')}
+      ${activeYears.length > 1 ? `<div class="stat-card"><div class="stat-label">Change</div><div class="stat-value" style="color:${overallPct>=0?'var(--green)':'var(--red)'}">${fmtPct(overallPct)}</div><div class="stat-sub">${(lastTotal-firstTotal).toLocaleString()}</div></div>` : ''}
+    `;
+
+    const thStyle = (col) => `onclick="sortCustomItemBreakdown('${col}')" class="${customState.itemSortCol===col?(customState.itemSortDir==='asc'?'sorted-asc':'sorted-desc'):''}"`;
+
+    // Year headers now carry a Change % AND an absolute Diff column between each consecutive pair
+    const itemYearHeaders = activeYears.map((y, yi) =>
+      `<th ${thStyle('y'+yi)} style="text-align:right;color:${colors[yi%colors.length]};">${y}<div style="font-size:9px;color:var(--text3);font-weight:400;">${periodLabel} (${metricLabel})</div></th>` +
+      (yi < activeYears.length - 1 ? `<th ${thStyle('pct'+yi)} style="text-align:right;font-size:9px;">Change</th><th ${thStyle('diff'+yi)} style="text-align:right;font-size:9px;">Diff</th>` : '')
+    ).join('');
+
+    const itemTableRows = itemRows.map(r => {
+      const cells = r.yearQtys.map((qty, yi) => {
+        const base = `<td class="td-num ${qty===0?'zero':''}">${fmtMetric(qty)}</td>`;
+        if (yi < activeYears.length - 1) {
+          const pct = r.pcts[yi], diff = r.diffs[yi];
+          const diffStr = state.metric === 'qty' ? diff.toLocaleString() : '$' + Math.round(diff).toLocaleString();
+          return base +
+            `<td class="td-pct ${pctClass(pct)}" style="font-size:10px;">${fmtPct(pct)}</td>` +
+            `<td class="td-num" style="font-size:10px;color:${diff>=0?'var(--green)':'var(--red)'}">${diff>=0?'+':''}${diffStr}</td>`;
+        }
+        return base;
+      }).join('');
+      return `<tr>
+        <td class="td-code">${r.itemCode}</td>
+        <td class="td-desc" title="${r.description}">${r.description}</td>
+        <td>${catBadge(r.cat, r.itemCode, r)}</td>
+        <td class="text-muted mono">${r.prodLine || '—'}</td>
+        ${cells}
+      </tr>`;
+    }).join('');
+
+    document.getElementById('customContent').innerHTML = `
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th ${thStyle('itemCode')}>Item Code</th>
+              <th ${thStyle('description')}>Description</th>
+              <th ${thStyle('cat')}>Category</th>
+              <th ${thStyle('prodLine')}>Prod Line</th>
+              ${itemYearHeaders}
+            </tr>
+          </thead>
+          <tbody>${itemTableRows}</tbody>
+        </table>
+      </div>
+      ${itemRows.length === 0 ? '<div class="no-data">No items found for selected categories.</div>' : ''}
+    `;
+    return;
+  }
+  document.getElementById('customStats').style.display = 'none';
+
   const tableRows = rows.map(r => {
     const color = getCatColor(r.cat);
     const cells = r.yearQtys.map((qty, yi) => {
@@ -6292,6 +7238,9 @@ const receiptCustomState = {
   quarter: 0,
   mode: 'items',       // 'items' | 'categories'
   selectedCats: [],
+  catItemBreakdown: false, // categories mode only: false = category totals, true = one row per item
+  itemSortCol: null,   // item-breakdown table sort column, or null = default (category, then item code)
+  itemSortDir: 'desc',
 };
 
 function updateReceiptCustomYearSel() {
@@ -6360,7 +7309,21 @@ function setReceiptCustomMode(mode) {
   document.getElementById('rcptCustomSearchGroup').style.display = (mode === 'items') ? '' : 'none';
   document.getElementById('rcptCustomItemsRow').style.display    = (mode === 'items') ? 'flex' : 'none';
   document.getElementById('rcptCustomCatsRow').style.display     = (mode === 'categories') ? 'flex' : 'none';
+  document.getElementById('rcptCustomCatBreakdownGroup').style.display = (mode === 'categories') ? '' : 'none';
   if (mode === 'categories') renderReceiptCustomCatChips();
+}
+
+function setReceiptCustomCatBreakdown(showItems) {
+  receiptCustomState.catItemBreakdown = showItems;
+  document.querySelectorAll('#rcptCustomCatBreakdownSel .period-btn').forEach(b => b.classList.remove('active'));
+  event.target.classList.add('active');
+  runReceiptsCustomCompareCategories();
+}
+
+function sortReceiptCustomItemBreakdown(col) {
+  if (receiptCustomState.itemSortCol === col) receiptCustomState.itemSortDir = receiptCustomState.itemSortDir === 'asc' ? 'desc' : 'asc';
+  else { receiptCustomState.itemSortCol = col; receiptCustomState.itemSortDir = 'desc'; }
+  runReceiptsCustomCompareCategories();
 }
 
 function renderReceiptCustomCatChips() {
@@ -6440,6 +7403,7 @@ function initReceiptCustomTypeahead() {
 
 function runReceiptsCustomCompare() {
   if (receiptCustomState.mode === 'categories') { runReceiptsCustomCompareCategories(); return; }
+  document.getElementById('rcptCustomStats').style.display = 'none';
 
   if (!receiptCustomState.items.length) {
     document.getElementById('rcptCustomContent').innerHTML = '<div class="empty-state"><div class="empty-icon">🎯</div><div class="empty-title">No items added</div><div class="empty-sub">Search and add item codes above.</div></div>';
@@ -6540,6 +7504,104 @@ function runReceiptsCustomCompareCategories() {
     (yi < activeYears.length - 1 ? `<th style="text-align:right;font-size:9px;">vs ${activeYears[yi+1]}</th>` : '')
   ).join('');
 
+  // ── Item breakdown: one row per item within the selected categories ──
+  if (receiptCustomState.catItemBreakdown) {
+    const itemRows = allItems
+      .filter(item => cats.includes(getReceiptCat(item.itemCode)))
+      .map(item => {
+        const cat = getReceiptCat(item.itemCode);
+        const yearQtys = activeYears.map(y => {
+          const yi = state.receiptYears[y]?.items.find(i => i.itemCode === item.itemCode);
+          return yi ? getReceiptPeriodsMetric(yi, periods) : 0;
+        });
+        const pcts = [], diffs = [];
+        for (let yi = 0; yi < yearQtys.length - 1; yi++) {
+          pcts.push(calcPct(yearQtys[yi], yearQtys[yi+1]));
+          diffs.push(yearQtys[yi+1] - yearQtys[yi]);
+        }
+        return { itemCode: item.itemCode, description: item.description || '—', prodLine: item.prodLine || '', cat, yearQtys, pcts, diffs };
+      })
+      .filter(r => r.yearQtys.some(v => v !== 0));
+
+    if (receiptCustomState.itemSortCol) {
+      const col = receiptCustomState.itemSortCol, dir = receiptCustomState.itemSortDir;
+      itemRows.sort((a, b) => {
+        let va, vb;
+        if (col === 'itemCode' || col === 'description' || col === 'prodLine' || col === 'cat') { va = a[col]; vb = b[col]; }
+        else if (col[0] === 'y') { const idx = +col.slice(1); va = a.yearQtys[idx]; vb = b.yearQtys[idx]; }
+        else if (col.startsWith('pct')) { const idx = +col.slice(3); va = a.pcts[idx]; vb = b.pcts[idx]; }
+        else if (col.startsWith('diff')) { const idx = +col.slice(4); va = a.diffs[idx]; vb = b.diffs[idx]; }
+        if (typeof va === 'string') { va = va.toLowerCase(); vb = vb.toLowerCase(); return dir === 'asc' ? (va > vb ? 1 : -1) : (va < vb ? 1 : -1); }
+        return dir === 'asc' ? va - vb : vb - va;
+      });
+    } else {
+      itemRows.sort((a, b) => a.cat.localeCompare(b.cat) || a.itemCode.localeCompare(b.itemCode));
+    }
+
+    // Stats bar — mirrors the regular Receipts Compare tab's stats bar, generalized to N years
+    const yearTotals = activeYears.map((y, yi) => itemRows.reduce((s, r) => s + r.yearQtys[yi], 0));
+    const firstTotal = yearTotals[0] || 0;
+    const lastTotal = yearTotals[yearTotals.length - 1] || 0;
+    const overallPct = calcPct(firstTotal, lastTotal);
+    const statsEl = document.getElementById('rcptCustomStats');
+    statsEl.style.display = 'flex';
+    statsEl.innerHTML = `
+      <div class="stat-card"><div class="stat-label">Items Compared</div><div class="stat-value">${itemRows.length}</div><div class="stat-sub">filtered</div></div>
+      ${activeYears.map((y, yi) => `<div class="stat-card"><div class="stat-label">${y} Total</div><div class="stat-value">${fmtReceiptMetric(yearTotals[yi])}</div><div class="stat-sub">${periodLabel} · ${metricLabel}</div></div>`).join('')}
+      ${activeYears.length > 1 ? `<div class="stat-card"><div class="stat-label">Change</div><div class="stat-value" style="color:${overallPct>=0?'var(--green)':'var(--red)'}">${fmtPct(overallPct)}</div><div class="stat-sub">${(lastTotal-firstTotal).toLocaleString()}</div></div>` : ''}
+    `;
+
+    const thStyle = (col) => `onclick="sortReceiptCustomItemBreakdown('${col}')" class="${receiptCustomState.itemSortCol===col?(receiptCustomState.itemSortDir==='asc'?'sorted-asc':'sorted-desc'):''}"`;
+
+    // Year headers now carry a Change % AND an absolute Diff column between each consecutive pair
+    const itemYearHeaders = activeYears.map((y, yi) =>
+      `<th ${thStyle('y'+yi)} style="text-align:right;color:${colors[yi%colors.length]};">${y}<div style="font-size:9px;color:var(--text3);font-weight:400;">${periodLabel} (${metricLabel})</div></th>` +
+      (yi < activeYears.length - 1 ? `<th ${thStyle('pct'+yi)} style="text-align:right;font-size:9px;">Change</th><th ${thStyle('diff'+yi)} style="text-align:right;font-size:9px;">Diff</th>` : '')
+    ).join('');
+
+    const itemTableRows = itemRows.map(r => {
+      const color = getReceiptCatColor(r.cat);
+      const cells = r.yearQtys.map((qty, yi) => {
+        const base = `<td class="td-num ${qty===0?'zero':''}">${fmtReceiptMetric(qty)}</td>`;
+        if (yi < activeYears.length - 1) {
+          const pct = r.pcts[yi], diff = r.diffs[yi];
+          return base +
+            `<td class="td-pct ${pctClass(pct)}" style="font-size:10px;">${fmtPct(pct)}</td>` +
+            `<td class="td-num" style="font-size:10px;color:${diff>=0?'var(--green)':'var(--red)'}">${diff>=0?'+':''}${fmtReceiptMetric(diff)}</td>`;
+        }
+        return base;
+      }).join('');
+      return `<tr>
+        <td class="td-code">${r.itemCode}</td>
+        <td class="td-desc" title="${r.description}">${r.description}</td>
+        <td><span class="cat-badge" style="background:${color}22;color:${color};border-color:${color}44;"
+          onclick="event.stopPropagation();showReceiptCatDropdown('${r.itemCode}',event.clientX,event.clientY)">${r.cat}</span></td>
+        <td class="text-muted mono">${r.prodLine || '—'}</td>
+        ${cells}
+      </tr>`;
+    }).join('');
+
+    document.getElementById('rcptCustomContent').innerHTML = `
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th ${thStyle('itemCode')}>Item Code</th>
+              <th ${thStyle('description')}>Description</th>
+              <th ${thStyle('cat')}>Category</th>
+              <th ${thStyle('prodLine')}>Prod Line</th>
+              ${itemYearHeaders}
+            </tr>
+          </thead>
+          <tbody>${itemTableRows}</tbody>
+        </table>
+      </div>
+      ${itemRows.length === 0 ? '<div class="no-data">No items found for selected categories.</div>' : ''}
+    `;
+    return;
+  }
+  document.getElementById('rcptCustomStats').style.display = 'none';
+
   const tableRows = rows.map(r => {
     const color = getReceiptCatColor(r.cat);
     const cells = r.yearQtys.map((qty, yi) => {
@@ -6585,6 +7647,8 @@ document.addEventListener('keydown', e => {
 });
 
 loadState();
+loadSTReportViews();
+updateSTReportViewFilterOptions();
 
 // Sales/Issue/Receipt year data lives in IndexedDB now — everything that
 // reads it must wait for this to resolve before first render.
@@ -6598,6 +7662,7 @@ loadAllYearsFromIDB().then(() => {
   initItemDetailTypeahead();
   initReceiptItemDetailTypeahead();
   initCustomTypeahead();
+  initProjTypeahead();
   initReceiptCustomTypeahead();
   initCustomMatTypeahead();
 });
@@ -6626,7 +7691,7 @@ function exportPDF(tab) {
     const periodLabel = getPeriodsLabel(getActivePeriods('cmpPeriodSel'));
     const activeCats = state.cmpActiveCats.length ? state.cmpActiveCats.join(', ') : 'All Categories';
 
-    titleText = `Year-Over-Year Comparison`;
+    titleText = `${state.cmpMode === 'materials' ? 'Issues' : 'Sales'} Year-Over-Year Comparison`;
     subtitleText = `${baseYear} vs ${vsYear}  ·  ${periodLabel}  ·  ${activeCats}`;
 
     // Stats
@@ -6753,53 +7818,77 @@ function exportPDF(tab) {
 
   // ── PROJECTIONS ──
   else if (tab === 'projections') {
-    const baseYear = document.getElementById('projBaseYear').value;
+    const baseYear = parseInt(document.getElementById('projBaseYear').value);
     const targetYear = document.getElementById('projTargetYear').value;
+    const selectionLabel = projState.mode === 'items'
+      ? `${projState.items.length} item${projState.items.length === 1 ? '' : 's'}`
+      : (projState.selectedCats.length ? projState.selectedCats.join(', ') : 'All Categories');
     titleText = `Sales Projections`;
-    subtitleText = `Base Year: ${baseYear}  ·  Target Year: ${targetYear}`;
+    subtitleText = `Base Year: ${baseYear}  ·  Target Year: ${targetYear}  ·  ${selectionLabel}`;
 
-    const srcTable = document.querySelector('#projectionsContent table');
-    if (srcTable) {
-      const headers = [...srcTable.querySelectorAll('thead th')].map(th =>
-        `<th class="num">${th.textContent.trim()}</th>`).join('');
-      const rows = [...srcTable.querySelectorAll('tbody tr')].map(tr => {
-        const cells = [...tr.querySelectorAll('td')].map((td, i) => {
-          const t = td.textContent.trim();
-          let cls = i===0?'td-code':i===1?'td-desc':'num';
-          return `<td class="${cls}">${t}</td>`;
-        }).join('');
-        return `<tr>${cells}</tr>`;
-      }).join('');
-      tableHTML = `<div class="pdf-section-title">Projections by Item</div>
-        <table class="pdf-table"><thead><tr>${headers}</tr></thead><tbody>${rows}</tbody></table>`;
-    }
+    // Rebuilt directly from data (not scraped from the DOM) so excluded
+    // periods/quarters can be cleanly dropped from both the cards and the
+    // table regardless of which granularity (Periods/Quarters) is active.
+    const cols = getProjTableColumns().filter(col => !col.periods.every(p => projExcludedPeriods.has(p)));
+    const items = getProjItems();
+    const baseItems = items.map(item => {
+      const bi = getItemForYear(baseYear, item.itemCode);
+      return { ...item, periods: bi ? bi.periods : [0,0,0,0,0,0,0,0,0,0,0,0] };
+    });
 
-    // Period summary cards
-    const sumCards = document.querySelectorAll('#projectionsContent .proj-sum-card');
-    if (sumCards.length) {
-      statsHTML = [...sumCards].map(c => {
-        const p = c.querySelector('.proj-sum-p')?.textContent || '';
-        const base = c.querySelector('.proj-sum-base')?.textContent || '';
-        const target = c.querySelector('.proj-sum-target')?.textContent || '';
-        const pct = c.querySelector('.proj-sum-pct')?.textContent || '';
-        const isPos = !pct.startsWith('-');
+    if (cols.length) {
+      statsHTML = cols.map(col => {
+        const pct = state.projTargets[col.periods[0]] || 0;
+        const baseTotal = baseItems.reduce((s,it) => s + col.periods.reduce((ss,p) => ss + it.periods[p-1], 0), 0);
+        const projTotal = col.periods.reduce((s,p) => {
+          const ppct = state.projTargets[p] || 0;
+          return s + baseItems.reduce((ss,it) => ss + Math.round(it.periods[p-1] * (1 + ppct/100)), 0);
+        }, 0);
+        const isPos = pct >= 0;
         return `<div class="pdf-stat">
-          <div class="pdf-stat-label">${p}</div>
-          <div class="pdf-stat-value" style="font-size:13px;">${target}</div>
-          <div class="pdf-stat-sub">Base: ${base} · <span style="color:${isPos?'#2a7a4f':'#c0392b'}">${pct}</span></div>
+          <div class="pdf-stat-label">${col.label}</div>
+          <div class="pdf-stat-value" style="font-size:13px;">${projTotal.toLocaleString()}</div>
+          <div class="pdf-stat-sub">Base: ${baseTotal.toLocaleString()} · <span style="color:${isPos?'#2a7a4f':'#c0392b'}">${fmtPct(pct)}</span></div>
         </div>`;
       }).join('');
     }
+
+    const headers = `<th class="num">Item Code</th><th class="num">Description</th><th class="num">Category</th><th class="num">Base Total (${baseYear})</th>` +
+      cols.map(col => `<th class="num">${col.label} Base</th><th class="num" style="background:#e8dcb8;color:#7a5f18;">${col.label} Proj</th>`).join('') +
+      `<th class="num" style="background:#e8dcb8;color:#7a5f18;">Proj Total</th>`;
+    const rows = baseItems.map(item => {
+      const cat = getEffectiveCat(item.itemCode, item);
+      const baseTotal = item.periods.reduce((s,v)=>s+v, 0);
+      const colVals = cols.map(col => {
+        const base = col.periods.reduce((s,p) => s + item.periods[p-1], 0);
+        const proj = col.periods.reduce((s,p) => {
+          const pct = state.projTargets[p] || 0;
+          return s + Math.round(item.periods[p-1] * (1 + pct/100));
+        }, 0);
+        return { base, proj };
+      });
+      const projTotal = colVals.reduce((s,c)=>s+c.proj, 0);
+      if (baseTotal === 0 && projTotal === 0) return '';
+      const cells = `<td class="td-code">${item.itemCode}</td><td class="td-desc">${item.description||'—'}</td><td>${cat||'—'}</td><td class="num">${fmt(baseTotal)}</td>` +
+        colVals.map(c => `<td class="num">${fmt(c.base)}</td><td class="num" style="background:rgba(200,168,75,0.16);">${fmt(c.proj)}</td>`).join('') +
+        `<td class="num" style="background:rgba(200,168,75,0.16);font-weight:600;">${fmt(projTotal)}</td>`;
+      return `<tr>${cells}</tr>`;
+    }).join('');
+    tableHTML = `<div class="pdf-section-title">Projections by Item</div>
+      <table class="pdf-table"><thead><tr>${headers}</tr></thead><tbody>${rows}</tbody></table>`;
   }
 
   // ── ITEM DETAIL ──
   else if (tab === 'items') {
+    const isMatMode = state.itemSearchMode === 'materials';
     const code = document.getElementById('itemDetailSelect').value;
     const searchVal = document.getElementById('itemDetailSearch').value;
     const itemEntry = _itemDetailAll.find(i => i.itemCode === code);
     const itemDesc = itemEntry?.description || '';
     const metricLabel = { qty: 'QTY', dollars: '$', cogs: 'COGS', profit: 'GP' }[state.metric] || 'QTY';
-    titleText = `Item Detail — ${code || searchVal}  [${metricLabel}]`;
+    titleText = isMatMode
+      ? `Issues Item Detail — ${code || searchVal}`
+      : `Sales Item Detail — ${code || searchVal}  [${metricLabel}]`;
     subtitleText = [itemDesc, `Years: ${getSortedYears().join(', ')}`].filter(Boolean).join('  ·  ');
 
     const srcTable = document.querySelector('#itemDetailContent table');
@@ -6820,17 +7909,24 @@ function exportPDF(tab) {
           }).join('');
           return `<tr>${cells}</tr>`;
         }).join('');
-      tableHTML = `<div class="pdf-section-title">Period Breakdown — ${metricLabel}</div>
+      tableHTML = `<div class="pdf-section-title">Period Breakdown${isMatMode ? '' : ' — ' + metricLabel}</div>
         <table class="pdf-table"><thead><tr>${headers}</tr></thead><tbody>${rows}</tbody></table>`;
     }
 
-    // Charts: full-width each, stacked; skip any the user has excluded (chart-pdf-excluded)
+    // Charts: full-width each, stacked; skip any the user has excluded (chart-pdf-excluded).
+    // Sales and Issues (materials) render into the same #itemDetailContent div
+    // but with different canvas ids, so pick the right set for whichever is active.
     try {
-      const chartDefs = [
-        { id: 'itemDetailChart', title: 'Year Over Year — All Periods' },
-        { id: 'itemTotalChart',  title: 'Annual Totals'                },
-        { id: 'itemPeriodChart', title: 'Period Pattern (Latest Year)' },
-      ];
+      const chartDefs = isMatMode
+        ? [
+            { id: 'itemMatChart',      title: 'Material Issued — Year Over Year' },
+            { id: 'itemMatTotalChart', title: 'Annual Totals Issued'             },
+          ]
+        : [
+            { id: 'itemDetailChart', title: 'Year Over Year — All Periods' },
+            { id: 'itemTotalChart',  title: 'Annual Totals'                },
+            { id: 'itemPeriodChart', title: 'Period Pattern (Latest Year)' },
+          ];
       let html = '';
       chartDefs.forEach(({ id, title }) => {
         const canvas = document.getElementById(id);
@@ -6915,7 +8011,7 @@ function exportPDF(tab) {
   // ── MARGINS ──
   else if (tab === 'margins') {
     const year = document.getElementById('marginYear')?.value || '';
-    titleText = `Margin Rankings — ${year}`;
+    titleText = `Sales Margin Rankings — ${year}`;
     const minRev = document.getElementById('marginMinRev')?.value || '0';
     const minRevLabel = minRev === '0' ? 'All Items' : `Min Revenue $${parseInt(minRev).toLocaleString()}+`;
     subtitleText = `${year}  ·  ${minRevLabel}  ·  ${state.marginActiveCats.length ? state.marginActiveCats.join(', ') : 'All Categories'}`;
@@ -6950,8 +8046,28 @@ function exportPDF(tab) {
   // ── CUSTOM COMPARE ──
   else if (tab === 'custom') {
     const periodLabel = getPeriodsLabel(getActivePeriods('customPeriodSel'));
-    titleText = `Custom Item Comparison`;
-    subtitleText = `${customState.years.join(', ')}  ·  ${periodLabel}  ·  ${customState.items.length} items`;
+    const isMatCustom = customState.dataMode === 'materials';
+    titleText = `Custom ${isMatCustom ? 'Issues' : 'Sales'} Comparison`;
+    subtitleText = isMatCustom
+      ? `${customState.matYears.join(', ')}  ·  ${periodLabel}  ·  ${customState.matItems.length} items`
+      : `${customState.years.join(', ')}  ·  ${periodLabel}  ·  ${customState.items.length} items`;
+
+    const statsBar = document.getElementById('customStats');
+    if (statsBar && statsBar.style.display !== 'none') {
+      const cards = statsBar.querySelectorAll('.stat-card');
+      statsHTML = [...cards].map(c => {
+        const label = c.querySelector('.stat-label')?.textContent || '';
+        const value = c.querySelector('.stat-value')?.textContent || '';
+        const sub = c.querySelector('.stat-sub')?.textContent || '';
+        const isChange = label === 'Change';
+        const valColor = isChange ? (value.startsWith('+') ? '#2a7a4f' : '#c0392b') : '#c8a84b';
+        return `<div class="pdf-stat">
+          <div class="pdf-stat-label">${label}</div>
+          <div class="pdf-stat-value" style="color:${valColor}">${value}</div>
+          <div class="pdf-stat-sub">${sub}</div>
+        </div>`;
+      }).join('');
+    }
 
     const srcTable = document.querySelector('#customContent table');
     if (srcTable) {
@@ -7027,6 +8143,23 @@ function exportPDF(tab) {
     titleText = `Custom Receipts Comparison`;
     subtitleText = `${receiptCustomState.years.join(', ')}  ·  ${periodLabel}  ·  ${getReceiptMetricLabel()}  ·  ${receiptCustomState.items.length} items`;
 
+    const statsBar = document.getElementById('rcptCustomStats');
+    if (statsBar && statsBar.style.display !== 'none') {
+      const cards = statsBar.querySelectorAll('.stat-card');
+      statsHTML = [...cards].map(c => {
+        const label = c.querySelector('.stat-label')?.textContent || '';
+        const value = c.querySelector('.stat-value')?.textContent || '';
+        const sub = c.querySelector('.stat-sub')?.textContent || '';
+        const isChange = label === 'Change';
+        const valColor = isChange ? (value.startsWith('+') ? '#2a7a4f' : '#c0392b') : '#c8a84b';
+        return `<div class="pdf-stat">
+          <div class="pdf-stat-label">${label}</div>
+          <div class="pdf-stat-value" style="color:${valColor}">${value}</div>
+          <div class="pdf-stat-sub">${sub}</div>
+        </div>`;
+      }).join('');
+    }
+
     const srcTable = document.querySelector('#rcptCustomContent table');
     if (srcTable) {
       const headers = [...srcTable.querySelectorAll('thead th')].map((th, i) => {
@@ -7046,6 +8179,32 @@ function exportPDF(tab) {
       tableHTML = `<div class="pdf-section-title">Item Breakdown</div>
         <table class="pdf-table"><thead><tr>${headers}</tr></thead><tbody>${rows}</tbody></table>`;
     }
+  }
+
+  // ── ST REPORT ──
+  else if (tab === 'stReport') {
+    const viewFilter = stReportViewFilterVal ? `View: ${stReportViewFilterVal}` : '';
+    const plFilter = stReportProdLineFilterVal ? `Prod Line: ${stReportProdLineFilterVal}` : 'All Prod Lines';
+    const searchFilter = stReportSearchVal ? ` · Search: "${stReportSearchVal}"` : '';
+    titleText = `Stock Status Report`;
+    subtitleText = `${stReportFilename || ''}  ·  ${ST_METRIC_LABELS[stReportMetric]}  ·  ${viewFilter ? viewFilter + '  ·  ' : ''}${plFilter}${searchFilter}`;
+
+    const statsBar = document.getElementById('stReportStats');
+    if (statsBar && statsBar.style.display !== 'none') {
+      const cards = statsBar.querySelectorAll('.stat-card');
+      statsHTML = [...cards].map(c => {
+        const label = c.querySelector('.stat-label')?.textContent || '';
+        const value = c.querySelector('.stat-value')?.textContent || '';
+        const sub = c.querySelector('.stat-sub')?.textContent || '';
+        return `<div class="pdf-stat">
+          <div class="pdf-stat-label">${label}</div>
+          <div class="pdf-stat-value" style="color:#c8a84b">${value}</div>
+          <div class="pdf-stat-sub">${sub}</div>
+        </div>`;
+      }).join('');
+    }
+
+    tableHTML = buildSTReportPDFTable();
   }
 
   // Build the print page
